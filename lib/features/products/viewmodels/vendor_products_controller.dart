@@ -53,9 +53,14 @@ class VendorProductsController extends GetxController {
             )
             .toList();
 
-        // Filter out approved products. Only show pending or rejected.
+        // ✅ FIX: Ab yahan 'hold' status bhi include kar diya he taake vendor ko apni hold requests nazar aayein aur wo edit kar sakay
         list = list
-            .where((p) => p.status == 'pending' || p.status == 'rejected')
+            .where(
+              (p) =>
+                  p.status == 'pending' ||
+                  p.status == 'rejected' ||
+                  p.status == 'hold',
+            )
             .toList();
 
         list.sort((a, b) => b.dateAdded.compareTo(a.dateAdded));

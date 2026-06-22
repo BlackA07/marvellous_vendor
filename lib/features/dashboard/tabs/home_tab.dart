@@ -1,43 +1,56 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../orders/presentation/screens/vendor_order_requests_screen.dart';
+import '../../products/views/vendor_my_products_screen.dart';
 import 'package:get/get.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/models/vendor_model.dart';
+import '../../notifications/screens/vendor_notifications_screen.dart';
 import '../../orders/controllers/vendor_orders_controller.dart';
-import '../../products/viewmodels/vendor_products_controller.dart'; // ✅ Added import
+import '../../products/viewmodels/vendor_products_controller.dart';
+import '../../auth/viewmodels/auth_viewmodel.dart';
+import '../../auth/views/login_screen.dart';
 
-class HomeTab extends StatefulWidget {
+class HomeTab extends ConsumerStatefulWidget {
   final Function(int)? onNavigateToTab;
   const HomeTab({super.key, this.onNavigateToTab});
-
   @override
-  State<HomeTab> createState() => _HomeTabState();
+  ConsumerState<HomeTab> createState() => _HomeTabState();
 }
 
-class _HomeTabState extends State<HomeTab> {
+class _HomeTabState extends ConsumerState<HomeTab> {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
   VendorModel? vendor;
   bool isLoading = true;
-
-  // ✅ Initialize Orders Controller to fetch real-time pending bills
+  int pendingOrderRequestsCount = 0;
+  double dueTodayAmount = 0.0;
+  StreamSubscription? _orderReqSub;
+  StreamSubscription? _duesSub;
   final VendorOrdersController _ordersCtrl = Get.put(VendorOrdersController());
-
   @override
   void initState() {
     super.initState();
     _fetchVendor();
+    _listenToDashboardStats();
+  }
+
+  @override
+  void dispose() {
+    _orderReqSub?.cancel();
+    _duesSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchVendor() async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return;
-      final doc = await FirebaseFirestore.instance
-          .collection('vendors')
-          .doc(uid)
-          .get();
+      final doc = await _db.collection('vendors').doc(uid).get();
       if (doc.exists && mounted) {
         final data = doc.data()!;
         setState(() {
@@ -62,12 +75,58 @@ class _HomeTabState extends State<HomeTab> {
         });
       }
     } catch (e) {
-      debugPrint('Vendor fetch error: $e');
       if (mounted) setState(() => isLoading = false);
     }
   }
 
-  // ── Base64 → Profile Image ────────────────────────────────────────────────
+  void _listenToDashboardStats() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _orderReqSub = _db
+        .collection('order_requests')
+        .where('vendorId', isEqualTo: uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((snap) {
+          if (mounted) {
+            setState(() {
+              pendingOrderRequestsCount = snap.docs.length;
+            });
+          }
+        });
+    _duesSub = _db
+        .collection('vendor_dues')
+        .where('vendorId', isEqualTo: uid)
+        .where('isPaid', isEqualTo: false)
+        .snapshots()
+        .listen((snap) {
+          double todayTotal = 0.0;
+          DateTime now = DateTime.now();
+          for (var doc in snap.docs) {
+            var data = doc.data();
+            Timestamp? ts = data['dueDate'] as Timestamp?;
+            if (ts != null) {
+              DateTime d = ts.toDate();
+              if (d.year == now.year &&
+                  d.month == now.month &&
+                  d.day == now.day) {
+                double original =
+                    (data['originalAmountDue'] ?? data['amountDue'] ?? 0.0)
+                        .toDouble();
+                double paid = (data['paidAmount'] ?? 0.0).toDouble();
+                double rem = original - paid;
+                if (rem > 0) todayTotal += rem;
+              }
+            }
+          }
+          if (mounted) {
+            setState(() {
+              dueTodayAmount = todayTotal;
+            });
+          }
+        });
+  }
+
   Widget _profileAvatar(double radius) {
     if (vendor?.profileImage != null && vendor!.profileImage!.isNotEmpty) {
       try {
@@ -78,7 +137,6 @@ class _HomeTabState extends State<HomeTab> {
         );
       } catch (_) {}
     }
-    // Fallback: first letter of name
     return CircleAvatar(
       radius: radius,
       backgroundColor: Colors.white24,
@@ -95,7 +153,6 @@ class _HomeTabState extends State<HomeTab> {
     );
   }
 
-  // ── Edit Dialog ───────────────────────────────────────────────────────────
   void _showEditDialog() {
     if (vendor == null) return;
     final storeNameCtrl = TextEditingController(text: vendor!.storeName);
@@ -109,7 +166,6 @@ class _HomeTabState extends State<HomeTab> {
       text: vendor!.contactPersonPhone,
     );
     final addressCtrl = TextEditingController(text: vendor!.address);
-
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -227,7 +283,7 @@ class _HomeTabState extends State<HomeTab> {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return;
-      await FirebaseFirestore.instance.collection('vendors').doc(uid).update({
+      await _db.collection('vendors').doc(uid).update({
         'storeName': storeName,
         'storePhone': storePhone,
         'ownerName': ownerName,
@@ -281,8 +337,105 @@ class _HomeTabState extends State<HomeTab> {
     }
   }
 
+  void _showAccountSwitcher(BuildContext context) {
+    final viewModel = ref.read(authViewModelProvider);
+    String? currentEmail = FirebaseAuth.instance.currentUser?.email;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled:
+          true, // ✅ Ziada accounts hon to sheet barhi hone deta hai
+      backgroundColor: const Color(0xFF2C2C2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          // ✅ NAYA: Isay SingleChildScrollView mein wrap kar diya gaya hai takay ye scroll ho sakay
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Switch Account",
+                  style: GoogleFonts.comicNeue(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 15),
+                ...viewModel.savedAccounts.map((acc) {
+                  bool isCurrent = acc['email'] == currentEmail;
+                  return Column(
+                    children: [
+                      ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: isCurrent
+                              ? Colors.green
+                              : Colors.grey,
+                          child: const Icon(Icons.store, color: Colors.white),
+                        ),
+                        title: Text(
+                          acc['storeName'] ?? 'Unknown Store',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isCurrent ? Colors.green : Colors.white,
+                          ),
+                        ),
+                        subtitle: Text(
+                          acc['email'] ?? '',
+                          style: const TextStyle(color: Colors.white54),
+                        ),
+                        trailing: isCurrent
+                            ? const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                              )
+                            : null,
+                        onTap: () {
+                          if (!isCurrent) {
+                            viewModel.switchAccount(
+                              acc['email']!,
+                              acc['password']!,
+                            );
+                          }
+                        },
+                      ),
+                      const Divider(color: Colors.white12),
+                    ],
+                  );
+                }),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFF009FFD),
+                    child: Icon(Icons.add, color: Colors.white),
+                  ),
+                  title: const Text(
+                    "Add Account",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF009FFD),
+                    ),
+                  ),
+                  onTap: () async {
+                    Get.back();
+                    await FirebaseAuth.instance.signOut();
+                    Get.offAll(() => const LoginScreen());
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final authViewModel = ref.watch(authViewModelProvider);
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -291,7 +444,7 @@ class _HomeTabState extends State<HomeTab> {
           end: Alignment.bottomRight,
         ),
       ),
-      child: isLoading
+      child: (isLoading || authViewModel.isLoading)
           ? const Center(child: CircularProgressIndicator(color: Colors.amber))
           : SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -300,8 +453,6 @@ class _HomeTabState extends State<HomeTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 10),
-
-                  // ── Welcome Card ──────────────────────────────────────
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
@@ -358,13 +509,126 @@ class _HomeTabState extends State<HomeTab> {
                             ],
                           ),
                         ),
-                        _profileAvatar(36),
+                        // Ye poora Row replace karo jo notification + logout + avatar hai:
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // ✅ NEW: Sell Requests (Order Requests) Icon with Badge
+                            InkWell(
+                              onTap: () => Get.to(
+                                () => const VendorOrderRequestsScreen(),
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  const Icon(
+                                    Icons
+                                        .assignment_rounded, // Sell Request Icon
+                                    color: Colors.white,
+                                    size: 28,
+                                  ),
+                                  if (pendingOrderRequestsCount > 0)
+                                    Positioned(
+                                      right: -4,
+                                      top: -4,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.redAccent,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Text(
+                                          pendingOrderRequestsCount.toString(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+
+                            // ✅ General Notification Icon (Bina kisi number k)
+                            InkWell(
+                              onTap: () => Get.to(
+                                () => const VendorNotificationsScreen(),
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              child: const Icon(
+                                Icons.notifications_active_rounded,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+
+                            // Logout
+                            GestureDetector(
+                              onTap: () async {
+                                Get.defaultDialog(
+                                  title: 'Logout',
+                                  titleStyle: GoogleFonts.comicNeue(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                  backgroundColor: const Color(0xFF2A2D3E),
+                                  middleText:
+                                      'Are you sure you want to logout?',
+                                  middleTextStyle: const TextStyle(
+                                    color: Colors.white70,
+                                  ),
+                                  textConfirm: 'Yes, Logout',
+                                  textCancel: 'Cancel',
+                                  confirmTextColor: Colors.white,
+                                  buttonColor: Colors.redAccent,
+                                  cancelTextColor: Colors.cyanAccent,
+                                  onConfirm: () async {
+                                    Get.back();
+                                    await FirebaseAuth.instance.signOut();
+                                    Get.offAll(() => const LoginScreen());
+                                  },
+                                );
+                              },
+                              child: const Icon(
+                                Icons.logout,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+
+                            // Avatar
+                            GestureDetector(
+                              onTap: () => _showAccountSwitcher(context),
+                              child: Stack(
+                                alignment: Alignment.bottomRight,
+                                children: [
+                                  _profileAvatar(34),
+                                  Container(
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.arrow_drop_down_circle,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 28),
-
                   Text(
                     "Overview",
                     style: GoogleFonts.comicNeue(
@@ -374,17 +638,12 @@ class _HomeTabState extends State<HomeTab> {
                     ),
                   ),
                   const SizedBox(height: 14),
-
-                  // ── Stats Grid ────────────────────────
                   LayoutBuilder(
                     builder: (context, constraints) {
                       int crossAxisCount = constraints.maxWidth > 600 ? 3 : 2;
-
-                      // ✅ NAYA: Product Controller Call For Live Count
                       final VendorProductsController productsCtrl = Get.put(
                         VendorProductsController(),
                       );
-
                       return GridView.count(
                         crossAxisCount: crossAxisCount,
                         crossAxisSpacing: 14,
@@ -393,53 +652,62 @@ class _HomeTabState extends State<HomeTab> {
                         physics: const NeverScrollableScrollPhysics(),
                         childAspectRatio: 1.35,
                         children: [
-                          _statCard(
-                            "Available Balance",
-                            "Rs ${vendor?.beginningBalance.toStringAsFixed(0) ?? '0'}",
-                            Icons.account_balance_wallet_rounded,
-                            const Color(0xFF00E676),
-                            const Color(0xFF00C853),
-                          ),
-
-                          // ✅ FIX: Connected to VendorProductsController for Live Products count
-                          Obx(
-                            () => _statCard(
-                              "Total Products",
-                              productsCtrl.isLoadingLive.value
-                                  ? "..."
-                                  : "${productsCtrl.liveProducts.length}",
-                              Icons.inventory_2_rounded,
-                              const Color(0xFF40C4FF),
-                              const Color(0xFF0091EA),
+                          GestureDetector(
+                            onTap: () => widget.onNavigateToTab?.call(2),
+                            child: _statCard(
+                              "Available Balance",
+                              "Rs ${vendor?.beginningBalance.toStringAsFixed(0) ?? '0'}",
+                              Icons.account_balance_wallet_rounded,
+                              const Color(0xFF00E676),
+                              const Color(0xFF00C853),
                             ),
                           ),
-
-                          Obx(
-                            () => _statCard(
-                              "Pending Bills",
-                              _ordersCtrl.isLoading.value
-                                  ? "..."
-                                  : "${_ordersCtrl.pendingOrders.length}",
-                              Icons.receipt_long_rounded,
-                              const Color(0xFFFFD740),
-                              const Color(0xFFFF6D00),
+                          GestureDetector(
+                            onTap: () => Get.to(
+                              () => const VendorMyProductsScreen(),
+                            ), // ✅ direct screen
+                            child: Obx(
+                              () => _statCard(
+                                "Live / Pending",
+                                (productsCtrl.isLoadingLive.value ||
+                                        productsCtrl.isLoadingPending.value)
+                                    ? "..."
+                                    : "${productsCtrl.liveProducts.length} / ${productsCtrl.pendingRequests.length}",
+                                Icons.inventory_2_rounded,
+                                const Color(0xFF40C4FF),
+                                const Color(0xFF0091EA),
+                              ),
                             ),
                           ),
-
-                          _statCard(
-                            "Categories",
-                            "${vendor?.categories.length ?? 0}",
-                            Icons.category_rounded,
-                            const Color(0xFFE040FB),
-                            const Color(0xFF9C27B0),
+                          GestureDetector(
+                            onTap: () => widget.onNavigateToTab?.call(5),
+                            child: Obx(
+                              () => _statCard(
+                                "Pending Bills",
+                                _ordersCtrl.isLoading.value
+                                    ? "..."
+                                    : "${_ordersCtrl.pendingOrders.length}",
+                                Icons.receipt_long_rounded,
+                                const Color(0xFFFFD740),
+                                const Color(0xFFFF6D00),
+                              ),
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => widget.onNavigateToTab?.call(2),
+                            child: _statCard(
+                              "Due Today",
+                              "Rs ${dueTodayAmount.toStringAsFixed(0)}",
+                              Icons.today_rounded,
+                              const Color(0xFFE040FB),
+                              const Color(0xFF9C27B0),
+                            ),
                           ),
                         ],
                       );
                     },
                   ),
-
                   const SizedBox(height: 30),
-
                   Text(
                     "Quick Actions",
                     style: GoogleFonts.comicNeue(
@@ -449,8 +717,7 @@ class _HomeTabState extends State<HomeTab> {
                     ),
                   ),
                   const SizedBox(height: 14),
-
-                  // ── Quick Actions ───────────────
+                  // ... inside _buildQuickActions ...
                   Wrap(
                     spacing: 14,
                     runSpacing: 14,
@@ -458,34 +725,30 @@ class _HomeTabState extends State<HomeTab> {
                       _quickActionButton(
                         "Add New\nProduct",
                         Icons.add_box_rounded,
-                        const Color(0xFF40C4FF),
-                        () => widget.onNavigateToTab?.call(5),
+                        Colors.green,
+                        () => widget.onNavigateToTab?.call(4),
                       ),
-                      // ✅ FIX: Added a Quick Action button for Bills & Orders
                       _quickActionButton(
                         "Bills &\nOrders",
                         Icons.receipt_long_rounded,
-                        const Color(0xFFFFD740),
-                        () => widget.onNavigateToTab?.call(6),
+                        Colors.orange,
+                        () => widget.onNavigateToTab?.call(5),
                       ),
                       _quickActionButton(
                         "Accounting\nDetails",
                         Icons.account_balance_rounded,
-                        const Color(0xFF00E676),
-                        () => widget.onNavigateToTab?.call(3),
+                        Colors.teal,
+                        () => widget.onNavigateToTab?.call(2),
                       ),
                       _quickActionButton(
-                        "Add New\nStore",
-                        Icons.add_business_rounded,
-                        const Color(0xFFFF6090),
-                        () => widget.onNavigateToTab?.call(2),
+                        "Reports",
+                        Icons.bar_chart_rounded,
+                        Colors.amber,
+                        () => widget.onNavigateToTab?.call(3),
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 30),
-
-                  // ── Complete Store Details Card ────────────────────────
                   if (vendor != null)
                     Container(
                       width: double.infinity,
@@ -521,7 +784,6 @@ class _HomeTabState extends State<HomeTab> {
                             ],
                           ),
                           const SizedBox(height: 14),
-
                           _sectionLabel("Store Info"),
                           _infoRow(
                             Icons.store_rounded,
@@ -539,7 +801,6 @@ class _HomeTabState extends State<HomeTab> {
                             vendor!.address,
                           ),
                           _infoRow(Icons.email_rounded, "Email", vendor!.email),
-
                           const SizedBox(height: 10),
                           _sectionLabel("Owner Info"),
                           _infoRow(
@@ -552,7 +813,6 @@ class _HomeTabState extends State<HomeTab> {
                             "Owner Mobile",
                             vendor!.ownerMobile,
                           ),
-
                           const SizedBox(height: 10),
                           _sectionLabel("Contact Person"),
                           _infoRow(
@@ -568,7 +828,6 @@ class _HomeTabState extends State<HomeTab> {
                         ],
                       ),
                     ),
-
                   const SizedBox(height: 20),
                 ],
               ),

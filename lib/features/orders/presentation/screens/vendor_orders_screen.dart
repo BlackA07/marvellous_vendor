@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import '../../../dashboard/viewmodels/dashboard_viewmodel.dart';
+import '../../../dashboard/views/dashboard_screen.dart';
 import '../../controllers/vendor_orders_controller.dart';
 import 'vendor_bill_detail_screen.dart';
 
-class VendorOrdersScreen extends StatelessWidget {
+class VendorOrdersScreen extends ConsumerWidget {
   const VendorOrdersScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final controller = Get.put(VendorOrdersController());
 
     return DefaultTabController(
@@ -17,6 +20,14 @@ class VendorOrdersScreen extends StatelessWidget {
       child: Scaffold(
         backgroundColor: const Color(0xFFF4F6F9),
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+            onPressed: () {
+              // Dashbaord tab ko 0 index (Home) pe le jayega
+              ref.read(dashboardNavProvider.notifier).state = 0;
+              Get.back();
+            },
+          ),
           title: Text(
             "My Orders & Payments",
             style: GoogleFonts.comicNeue(

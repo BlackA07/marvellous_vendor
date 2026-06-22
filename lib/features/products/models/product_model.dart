@@ -13,14 +13,16 @@ class ProductModel {
   double originalPrice;
   int stockQuantity;
   int stockOut;
+  int stockIn;
   String vendorId;
-  String vendorName; // ✅ Nayi Field: Vendor ka auto-filled naam
+  String vendorName;
   List<String> images;
   String? video;
   DateTime dateAdded;
   String deliveryLocation;
   String warranty;
   double productPoints;
+  String? tiktokVideoUrl; // ✅ NAYA FIELD ADDED
 
   Map<String, double> deliveryFeesMap;
   Map<String, String> deliveryTimeMap;
@@ -33,7 +35,8 @@ class ProductModel {
   bool showDecimalPoints;
   String? ram;
   String? storage;
-  String status; // ✅ 'pending', 'approved', 'rejected'
+  String status;
+  String? holdReason; // ✅ NAYA FIELD: Hold reason save aur fetch karne ke liye
 
   ProductModel({
     this.id,
@@ -44,10 +47,12 @@ class ProductModel {
     required this.subCategory,
     required this.brand,
     required this.purchasePrice,
+    this.tiktokVideoUrl, // ✅ ADDED
     required this.salePrice,
     required this.originalPrice,
     required this.stockQuantity,
     this.stockOut = 0,
+    this.stockIn = 0,
     required this.vendorId,
     required this.vendorName,
     required this.images,
@@ -66,7 +71,8 @@ class ProductModel {
     this.showDecimalPoints = true,
     this.ram,
     this.storage,
-    this.status = 'pending', // Vendor jab add karega to default pending hoga
+    this.status = 'pending',
+    this.holdReason, // ✅ ADDED
   });
 
   Map<String, dynamic> toMap() {
@@ -79,10 +85,12 @@ class ProductModel {
       'subCategory': subCategory,
       'brand': brand,
       'purchasePrice': purchasePrice,
+      'tiktokVideoUrl': tiktokVideoUrl, // ✅ ADDED
       'salePrice': salePrice,
       'originalPrice': originalPrice,
       'stockQuantity': stockQuantity,
       'stockOut': stockOut,
+      'stockIn': stockIn,
       'vendorId': vendorId,
       'vendorName': vendorName,
       'images': images,
@@ -102,44 +110,61 @@ class ProductModel {
       'ram': ram,
       'storage': storage,
       'status': status,
+      'holdReason': holdReason, // ✅ ADDED
     };
   }
 
   factory ProductModel.fromMap(Map<String, dynamic> map, String docId) {
     return ProductModel(
       id: docId,
-      name: map['name'] ?? '',
-      modelNumber: map['modelNumber'] ?? '',
-      description: map['description'] ?? '',
-      category: map['category'] ?? '',
-      subCategory: map['subCategory'] ?? '',
-      brand: map['brand'] ?? '',
-      purchasePrice: (map['purchasePrice'] ?? 0).toDouble(),
-      salePrice: (map['salePrice'] ?? 0).toDouble(),
-      originalPrice: (map['originalPrice'] ?? 0).toDouble(),
-      stockQuantity: map['stockQuantity'] ?? 0,
-      stockOut: map['stockOut'] ?? 0,
-      vendorId: map['vendorId'] ?? '',
-      vendorName: map['vendorName'] ?? 'Unknown Vendor',
-      images: List<String>.from(map['images'] ?? []),
-      video: map['video'],
-      dateAdded: map['dateAdded'] != null
+      name: map['name']?.toString() ?? '',
+      modelNumber: map['modelNumber']?.toString() ?? '',
+      description: map['description']?.toString() ?? '',
+      category: map['category']?.toString() ?? '',
+      subCategory: map['subCategory']?.toString() ?? '',
+      brand: map['brand']?.toString() ?? '',
+      purchasePrice: (map['purchasePrice'] as num?)?.toDouble() ?? 0.0,
+      salePrice: (map['salePrice'] as num?)?.toDouble() ?? 0.0,
+      originalPrice: (map['originalPrice'] as num?)?.toDouble() ?? 0.0,
+      stockQuantity: (map['stockQuantity'] as num?)?.toInt() ?? 0,
+      stockOut: (map['stockOut'] as num?)?.toInt() ?? 0,
+      stockIn: (map['stockIn'] ?? map['stockQuantity'] as num?)?.toInt() ?? 0,
+      vendorId: map['vendorId']?.toString() ?? '',
+      vendorName: map['vendorName']?.toString() ?? 'Unknown Vendor',
+      images: map['images'] is List
+          ? (map['images'] as List).map((e) => e.toString()).toList()
+          : [],
+      video: map['video']?.toString(),
+      dateAdded: map['dateAdded'] is Timestamp
           ? (map['dateAdded'] as Timestamp).toDate()
           : DateTime.now(),
-      deliveryLocation: map['deliveryLocation'] ?? 'Worldwide',
-      warranty: map['warranty'] ?? 'No Warranty',
-      productPoints: (map['productPoints'] ?? 0).toDouble(),
-      deliveryFeesMap: Map<String, double>.from(map['deliveryFeesMap'] ?? {}),
-      deliveryTimeMap: Map<String, String>.from(map['deliveryTimeMap'] ?? {}),
-      codFee: (map['codFee'] ?? 0.0).toDouble(),
-      averageRating: (map['averageRating'] ?? 0.0).toDouble(),
-      totalReviews: map['totalReviews'] ?? 0,
+      deliveryLocation: map['deliveryLocation']?.toString() ?? 'Worldwide',
+      warranty: map['warranty']?.toString() ?? 'No Warranty',
+      productPoints: (map['productPoints'] as num?)?.toDouble() ?? 0.0,
+      tiktokVideoUrl: map['tiktokVideoUrl']?.toString(), // ✅ ADDED
+      deliveryFeesMap: map['deliveryFeesMap'] is Map
+          ? (map['deliveryFeesMap'] as Map).map(
+              (key, value) =>
+                  MapEntry(key.toString(), (value as num).toDouble()),
+            )
+          : {},
+      deliveryTimeMap: map['deliveryTimeMap'] is Map
+          ? (map['deliveryTimeMap'] as Map).map(
+              (key, value) => MapEntry(key.toString(), value.toString()),
+            )
+          : {},
+      codFee: (map['codFee'] as num?)?.toDouble() ?? 0.0,
+      averageRating: (map['averageRating'] as num?)?.toDouble() ?? 0.0,
+      totalReviews: (map['totalReviews'] as num?)?.toInt() ?? 0,
       isPackage: map['isPackage'] ?? false,
-      includedItemIds: List<String>.from(map['includedItemIds'] ?? []),
+      includedItemIds: map['includedItemIds'] is List
+          ? (map['includedItemIds'] as List).map((e) => e.toString()).toList()
+          : [],
       showDecimalPoints: map['showDecimalPoints'] ?? true,
-      ram: map['ram'],
-      storage: map['storage'],
-      status: map['status'] ?? 'pending',
+      ram: map['ram']?.toString(),
+      storage: map['storage']?.toString(),
+      status: map['status']?.toString() ?? 'pending',
+      holdReason: map['holdReason']?.toString(), // ✅ ADDED
     );
   }
 }

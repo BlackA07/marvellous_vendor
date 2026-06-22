@@ -23,16 +23,13 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkAuthState() async {
-    // 3 seconds ka splash delay
     await Future.delayed(const Duration(seconds: 3));
 
     User? currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
-      // Agar user login nahi hai to Login screen par bhejein
       Get.offAll(() => const LoginScreen());
     } else {
-      // Agar user login hai to Firestore se uska status check karein
       try {
         DocumentSnapshot vendorDoc = await FirebaseFirestore.instance
             .collection('vendors')
@@ -40,22 +37,13 @@ class _SplashScreenState extends State<SplashScreen> {
             .get();
 
         if (vendorDoc.exists) {
-          String status = vendorDoc.get('status');
-          if (status == 'pending') {
-            Get.offAll(() => const PendingApprovalScreen());
-          } else if (status == 'approved') {
-            // ✅ FIX: Auto-login ke baad DashboardScreen par navigate karein
+          String status = vendorDoc.get('status') ?? 'pending';
+
+          if (status == 'approved') {
             Get.offAll(() => const DashboardScreen());
           } else {
-            // Agar rejected hai to signout karke Login par bhejein
-            await FirebaseAuth.instance.signOut();
-            Get.offAll(() => const LoginScreen());
-            Get.snackbar(
-              "Rejected",
-              "Your account was rejected by Admin.",
-              backgroundColor: Colors.red,
-              colorText: Colors.white,
-            );
+            // pending, hold, rejected — sab PendingApprovalScreen pe
+            Get.offAll(() => const PendingApprovalScreen());
           }
         } else {
           await FirebaseAuth.instance.signOut();

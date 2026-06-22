@@ -32,43 +32,95 @@ class LoginScreen extends ConsumerWidget {
                   style: GoogleFonts.comicNeue(
                     fontSize: 28,
                     fontWeight: FontWeight.w900,
-                    color: const Color.fromARGB(
-                      255,
-                      0,
-                      0,
-                      0,
-                    ), // Dark background ke hisaab se white rakha hai
+                    color: const Color.fromARGB(255, 0, 0, 0),
                   ),
                 ),
                 const SizedBox(height: 40),
 
+                // ✅ Updated to use Login Email Controller
                 MetallicTextField(
                   hintText: "Email Address",
                   icon: Icons.email,
-                  controller: viewModel.emailCtrl,
+                  controller: viewModel.loginEmailCtrl,
                 ),
+
+                // ✅ Updated to use Login Password Controller & State
                 MetallicTextField(
                   hintText: "Password",
                   icon: Icons.lock,
-                  isPassword: viewModel.isPassHidden,
-                  controller: viewModel.passCtrl,
+                  isPassword: viewModel.isLoginPassHidden,
+                  controller: viewModel.loginPassCtrl,
                 ),
 
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () {},
-                    child: Text(
-                      "Forgot Password?",
-                      style: GoogleFonts.comicNeue(
+                // ✅ Show Password aur Forgot Password dono aik hi line mein samne samne rakh diye
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // --- SHOW PASSWORD BUTTON ---
+                    TextButton.icon(
+                      onPressed: () => viewModel.toggleLoginPassVisibility(),
+                      icon: Icon(
+                        viewModel.isLoginPassHidden
+                            ? Icons.visibility_off
+                            : Icons.visibility,
                         color: Colors.blueAccent,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                        size: 18,
+                      ),
+                      label: Text(
+                        viewModel.isLoginPassHidden ? "Show" : "Hide",
+                        style: const TextStyle(
+                          color: Colors.blueAccent,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
+
+                    // --- FORGOT PASSWORD BUTTON ---
+                    TextButton(
+                      onPressed: () {
+                        TextEditingController resetEmailCtrl =
+                            TextEditingController(
+                              text: viewModel.loginEmailCtrl.text,
+                            );
+                        Get.defaultDialog(
+                          title: "Reset Password",
+                          content: Column(
+                            children: [
+                              const Text(
+                                "Enter your email to receive a reset link.",
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: resetEmailCtrl,
+                                decoration: const InputDecoration(
+                                  hintText: "Email Address",
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ],
+                          ),
+                          textConfirm: "Send Link",
+                          confirmTextColor: Colors.white,
+                          onConfirm: () {
+                            Get.back();
+                            viewModel.forgotPassword(resetEmailCtrl.text);
+                          },
+                          textCancel: "Cancel",
+                        );
+                      },
+                      child: Text(
+                        "Forgot Password?",
+                        style: GoogleFonts.comicNeue(
+                          color: Colors.black, // Color black kar diya
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 20),
+
+                const SizedBox(height: 10), // Thori space
 
                 viewModel.isLoading
                     ? const CircularProgressIndicator()
