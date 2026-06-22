@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// ✅ NAYE IMPORTS: Teeno screens yahan import karni hain
+// ✅ NAYE IMPORTS
+import '../../orders/presentation/screens/vendor_order_requests_screen.dart';
 import '../../orders/presentation/screens/vendor_orders_screen.dart';
 import '../../products/views/vendor_my_products_screen.dart';
-import '../../finance/presentation/screens/vendor_finance_screen.dart'; // ✅ Added Finance Screen Import
+import '../../finance/presentation/screens/vendor_finance_screen.dart';
+// ✅ Dashboard ViewModel Import (Back Navigation handle karne ke liye)
+import '../viewmodels/dashboard_viewmodel.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Index Map (dashboardNavProvider state values):
 //   0 = Dashboard (HomeTab)
 //   1 = My Products ✅ (Connected)
 //   2 = Manage Stores
-//   3 = Finance & Wallet ✅ (Now Connected)
+//   3 = Finance & Wallet ✅ (Connected)
 //   4 = Reports
 //   5 = Add New Product
 //   6 = Bills & Orders ✅ (Connected)
-//   7 = Sell Requests
+//   7 = Sell Requests ✅ (NOW CONNECTED)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Products Tab ─────────────────────────────────────────────────────────────
@@ -42,13 +46,12 @@ class StoresTab extends StatelessWidget {
   }
 }
 
-// ── Finance Tab (NOW CONNECTED) ───────────────────────────────────────────────
+// ── Finance Tab ───────────────────────────────────────────────
 class FinanceTab extends StatelessWidget {
   const FinanceTab({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // ✅ FIX: Ab yahan vendor ka mukammal Finance aur Ledger dashboard khulay ga!
     return const VendorFinanceScreen();
   }
 }
@@ -87,16 +90,19 @@ class OrdersTab extends StatelessWidget {
   }
 }
 
-// ── Sell Requests Tab ─────────────────────────────────────────────────────────
-class SellRequestsTab extends StatelessWidget {
+// ── Sell Requests Tab (NOW CONNECTED WITH BACK NAVIGATION) ────────────────────
+class SellRequestsTab extends ConsumerWidget {
   const SellRequestsTab({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return _comingSoon(
-      "Sell Requests",
-      Icons.request_page_rounded,
-      Colors.pinkAccent,
+  Widget build(BuildContext context, WidgetRef ref) {
+    // ✅ WillPopScope: App ko close hone se rokega aur wapas HomeTab (Index 0) pe le jayega
+    return WillPopScope(
+      onWillPop: () async {
+        ref.read(dashboardNavProvider.notifier).state = 0;
+        return false; // False ka matlab default back behaviour (app close) rok do
+      },
+      child: const VendorOrderRequestsScreen(),
     );
   }
 }

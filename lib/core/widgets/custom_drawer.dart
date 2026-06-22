@@ -3,14 +3,41 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../features/dashboard/viewmodels/dashboard_viewmodel.dart';
 import '../../features/auth/views/login_screen.dart';
 
-class CustomDrawer extends ConsumerWidget {
+class CustomDrawer extends ConsumerStatefulWidget {
   const CustomDrawer({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomDrawer> createState() => _CustomDrawerState();
+}
+
+class _CustomDrawerState extends ConsumerState<CustomDrawer> {
+  int _pendingSellRequests = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenToSellRequests();
+  }
+
+  void _listenToSellRequests() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    FirebaseFirestore.instance
+        .collection('order_requests')
+        .where('vendorId', isEqualTo: uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((snap) {
+          if (mounted) setState(() => _pendingSellRequests = snap.docs.length);
+        });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final currentIndex = ref.watch(dashboardNavProvider);
     final user = FirebaseAuth.instance.currentUser;
 
@@ -18,7 +45,6 @@ class CustomDrawer extends ConsumerWidget {
       backgroundColor: const Color(0xFF111111),
       child: Column(
         children: [
-          // ── Drawer Header ─────────────────────────────────────────────
           Container(
             width: double.infinity,
             padding: const EdgeInsets.only(
@@ -41,17 +67,15 @@ class CustomDrawer extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  height: 70,
-                  width: 70,
+                  height: 60,
+                  width: 60,
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.cyanAccent, width: 2),
                     color: Colors.black54,
+                    border: Border.all(color: Colors.cyanAccent, width: 2),
                   ),
-                  child: const Icon(
-                    Icons.storefront,
-                    color: Colors.cyanAccent,
-                    size: 35,
+                  child: Image.asset(
+                    'assets/images/logo1.png',
+                    fit: BoxFit.cover,
                   ),
                 ),
                 const SizedBox(height: 15),
@@ -63,28 +87,13 @@ class CustomDrawer extends ConsumerWidget {
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  user?.email ?? "vendor@example.com",
-                  style: GoogleFonts.comicNeue(
-                    color: Colors.white54,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
               ],
             ),
           ),
-
-          // ── Navigation Items ──────────────────────────────────────────
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 10),
-              physics: const BouncingScrollPhysics(),
               children: [
-                // Section label: Main
-                _sectionLabel("Main"),
-
                 _drawerTile(
                   context,
                   ref,
@@ -103,59 +112,12 @@ class CustomDrawer extends ConsumerWidget {
                   currentIndex: currentIndex,
                   color: Colors.lightBlueAccent,
                 ),
-
-                // Section label: Sales
-                _sectionLabel("Sales"),
-
-                _drawerTile(
-                  context,
-                  ref,
-                  title: "Add New Product",
-                  icon: Icons.add_box_rounded,
-                  index: 5,
-                  currentIndex: currentIndex,
-                  color: Colors.greenAccent,
-                ),
-
-                // ✅ FIX: "Orders" ko "Bills & Orders" kar diya aur Icon change kar diya
-                _drawerTile(
-                  context,
-                  ref,
-                  title: "Bills & Orders",
-                  icon: Icons.receipt_long_rounded,
-                  index: 6,
-                  currentIndex: currentIndex,
-                  color: Colors.orangeAccent,
-                ),
-
-                _drawerTile(
-                  context,
-                  ref,
-                  title: "Sell Requests",
-                  icon: Icons.request_page_rounded,
-                  index: 7,
-                  currentIndex: currentIndex,
-                  color: Colors.pinkAccent,
-                ),
-
-                // Section label: Management
-                _sectionLabel("Management"),
-
-                _drawerTile(
-                  context,
-                  ref,
-                  title: "Manage Stores",
-                  icon: Icons.store_rounded,
-                  index: 2,
-                  currentIndex: currentIndex,
-                  color: Colors.purpleAccent,
-                ),
                 _drawerTile(
                   context,
                   ref,
                   title: "Finance & Wallet",
                   icon: Icons.account_balance_wallet_rounded,
-                  index: 3,
+                  index: 2,
                   currentIndex: currentIndex,
                   color: Colors.tealAccent,
                 ),
@@ -164,54 +126,46 @@ class CustomDrawer extends ConsumerWidget {
                   ref,
                   title: "Reports",
                   icon: Icons.bar_chart_rounded,
-                  index: 4,
+                  index: 3,
                   currentIndex: currentIndex,
                   color: Colors.amberAccent,
+                ),
+                _drawerTile(
+                  context,
+                  ref,
+                  title: "Add New Product",
+                  icon: Icons.add_box_rounded,
+                  index: 4,
+                  currentIndex: currentIndex,
+                  color: Colors.greenAccent,
+                ),
+                _drawerTile(
+                  context,
+                  ref,
+                  title: "Bills & Orders",
+                  icon: Icons.receipt_long_rounded,
+                  index: 5,
+                  currentIndex: currentIndex,
+                  color: Colors.orangeAccent,
+                ),
+                _drawerTile(
+                  context,
+                  ref,
+                  title: "Sell Requests",
+                  icon: Icons.request_page_rounded,
+                  index: 6,
+                  currentIndex: currentIndex,
+                  color: Colors.pinkAccent,
+                  badgeCount: _pendingSellRequests,
                 ),
               ],
             ),
           ),
-
-          // ── Logout ────────────────────────────────────────────────────
-          const Divider(color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-            title: Text(
-              "Logout",
-              style: GoogleFonts.comicNeue(
-                color: Colors.redAccent,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            onTap: () async {
-              await FirebaseAuth.instance.signOut();
-              Get.offAll(() => const LoginScreen());
-            },
-          ),
-          const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  // ── Section Label ─────────────────────────────────────────────────────────
-  Widget _sectionLabel(String label) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 18, top: 14, bottom: 4),
-      child: Text(
-        label.toUpperCase(),
-        style: GoogleFonts.comicNeue(
-          color: Colors.white24,
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 1.5,
-        ),
-      ),
-    );
-  }
-
-  // ── Drawer Tile ───────────────────────────────────────────────────────────
   Widget _drawerTile(
     BuildContext context,
     WidgetRef ref, {
@@ -220,36 +174,23 @@ class CustomDrawer extends ConsumerWidget {
     required int index,
     required int currentIndex,
     required Color color,
+    int? badgeCount,
   }) {
     bool isSelected = currentIndex == index;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: isSelected ? color.withOpacity(0.15) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isSelected ? color.withOpacity(0.4) : Colors.transparent,
-        ),
+    return ListTile(
+      leading: Badge(
+        isLabelVisible: badgeCount != null && badgeCount > 0,
+        label: Text("${badgeCount ?? 0}"),
+        child: Icon(icon, color: isSelected ? color : Colors.white38),
       ),
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: isSelected ? color : Colors.white38,
-          size: 22,
-        ),
-        title: Text(
-          title,
-          style: GoogleFonts.comicNeue(
-            color: isSelected ? Colors.white : Colors.white60,
-            fontSize: 17,
-            fontWeight: isSelected ? FontWeight.w900 : FontWeight.bold,
-          ),
-        ),
-        onTap: () {
-          ref.read(dashboardNavProvider.notifier).state = index;
-          Navigator.pop(context);
-        },
+      title: Text(
+        title,
+        style: TextStyle(color: isSelected ? Colors.white : Colors.white60),
       ),
+      onTap: () {
+        ref.read(dashboardNavProvider.notifier).state = index;
+        Navigator.pop(context);
+      },
     );
   }
 }

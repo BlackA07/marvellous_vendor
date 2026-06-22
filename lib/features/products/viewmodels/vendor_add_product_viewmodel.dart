@@ -26,6 +26,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
   final nameCtrl = TextEditingController();
   final modelCtrl = TextEditingController();
   final descCtrl = TextEditingController();
+  final tiktokUrlCtrl = TextEditingController(); // ✅ NAYA FIELD
   final brandCtrl = TextEditingController();
   final ramCtrl = TextEditingController();
   final storageCtrl = TextEditingController();
@@ -73,7 +74,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
     isEditMode = true;
     isEditInitialized = true;
     editOriginalProductId = product.id;
-
+    tiktokUrlCtrl.text = product.tiktokVideoUrl ?? ''; // ✅ NAYA FIELD
     nameCtrl.text = product.name;
     modelCtrl.text = product.modelNumber;
     descCtrl.text = product.description;
@@ -297,6 +298,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
         name: nameCtrl.text.trim(),
         modelNumber: modelCtrl.text.trim(),
         description: descCtrl.text.trim(),
+        tiktokVideoUrl: tiktokUrlCtrl.text.trim(), // ✅ NAYA FIELD
         category: selectedCategory!,
         subCategory: selectedSubCategory ?? "General",
         brand: brandCtrl.text.isEmpty ? "Generic" : brandCtrl.text.trim(),
@@ -321,13 +323,42 @@ class VendorAddProductViewModel extends ChangeNotifier {
 
       Map<String, dynamic> dataToSave = requestProduct.toMap();
 
-      // ✅ IF EDIT MODE: Mark it as an Edit Request for Admin
       if (isEditMode) {
-        dataToSave['isEditRequest'] = true;
-        dataToSave['originalProductId'] = editOriginalProductId;
-      }
+        // ✅ Check karen ke kya ye product already 'product_requests' mein exist karta hai?
+        // Agar editOriginalProductId null nahi hai toh check karein.
+        if (editOriginalProductId != null) {
+          var requestDoc = await _firestore
+              .collection('product_requests')
+              .doc(editOriginalProductId)
+              .get();
 
-      await _firestore.collection('product_requests').add(dataToSave);
+          if (requestDoc.exists) {
+            // ✅ Agar ye pehle se request hai (pending/hold wagera), toh naya mat banao balkay isi ko OVERWRITE karo
+            dataToSave['isEditRequest'] =
+                requestDoc.data()?['isEditRequest'] ??
+                false; // purana flag preserve karein
+            dataToSave['originalProductId'] = requestDoc
+                .data()?['originalProductId']; // purana parent preserve karein
+            dataToSave.remove(
+              'holdReason',
+            ); // Hold reason remove kardo kyunke ab theek kar dia hai
+
+            await _firestore
+                .collection('product_requests')
+                .doc(editOriginalProductId)
+                .update(dataToSave);
+          } else {
+            // ✅ Agar requestDoc mein nahi hai, iska matlab vendor live product ko edit kar raha hai
+            // Toh ab naya 'Edit Request' document create karein
+            dataToSave['isEditRequest'] = true;
+            dataToSave['originalProductId'] = editOriginalProductId;
+            await _firestore.collection('product_requests').add(dataToSave);
+          }
+        }
+      } else {
+        // ✅ Agar naya add kar raha hai toh add hi hoga
+        await _firestore.collection('product_requests').add(dataToSave);
+      }
 
       _clearForm();
       return true;
@@ -342,6 +373,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
 
   void _clearForm() {
     nameCtrl.clear();
+    tiktokUrlCtrl.clear(); // ✅ NAYA FIELD
     modelCtrl.clear();
     descCtrl.clear();
     brandCtrl.clear();
@@ -378,6 +410,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
   void dispose() {
     _categorySubscription?.cancel();
     nameCtrl.removeListener(_checkIfMobile);
+    tiktokUrlCtrl.dispose(); // ✅ NAYA FIELD
     nameCtrl.dispose();
     modelCtrl.dispose();
     descCtrl.dispose();

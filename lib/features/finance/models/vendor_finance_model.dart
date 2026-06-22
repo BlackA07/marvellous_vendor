@@ -7,6 +7,9 @@ class VendorLedgerItem {
   final DateTime date;
   final bool isPayment; // true = Admin se paise aaye, false = Naya bill bana
   final String subtitle;
+  final String? screenshot;
+  final String? paymentMode; // ✅ NEW: Added for Cheque Check
+  final bool isCleared; // ✅ NEW: Added for Pending Check
 
   VendorLedgerItem({
     required this.id,
@@ -15,5 +18,8 @@ class VendorLedgerItem {
     required this.date,
     required this.isPayment,
     required this.subtitle,
+    this.screenshot,
+    this.paymentMode,
+    this.isCleared = true,
   });
 }

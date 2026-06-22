@@ -25,9 +25,18 @@ class VendorProductsRepository {
         .snapshots();
   }
 
-  // ✅ NEW: Delete Product / Cancel Request
+  // ✅ FIX: Delete Product / Cancel Request (Soft Delete Fallback)
   Future<void> deleteProductRequest(String docId) async {
-    await _db.collection('product_requests').doc(docId).delete();
+    try {
+      // Pehle proper delete try karega
+      await _db.collection('product_requests').doc(docId).delete();
+    } catch (e) {
+      // Agar Firebase rules delete allow nahi karte, toh usay 'cancelled' kar dega (Soft Delete)
+      // Is se wo vendor aur admin dono ki screens se ghaib ho jayega
+      await _db.collection('product_requests').doc(docId).update({
+        'status': 'cancelled',
+      });
+    }
   }
 
   Future<void> deleteLiveProduct(String docId) async {

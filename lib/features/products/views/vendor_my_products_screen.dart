@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import '../../dashboard/views/dashboard_screen.dart';
 import '../viewmodels/vendor_products_controller.dart';
 import '../models/product_model.dart';
 import 'add_product_screen.dart';
@@ -19,6 +20,11 @@ class VendorMyProductsScreen extends StatelessWidget {
       child: Scaffold(
         backgroundColor: const Color(0xFFF4F6F9),
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+            onPressed: () =>
+                Get.back(), // ✅ offAll ki jagah back — dashboard pe wapas
+          ),
           title: Text(
             "My Products",
             style: GoogleFonts.comicNeue(
@@ -167,15 +173,25 @@ class VendorMyProductsScreen extends StatelessWidget {
 
     if (imageBase64.isNotEmpty) {
       try {
-        String cleanBase64 = imageBase64.contains(',')
-            ? imageBase64.split(',').last
-            : imageBase64;
-        imageWidget = Image.memory(
-          base64Decode(cleanBase64),
-          fit: BoxFit.cover,
-          width: 80,
-          height: 80,
-        );
+        if (imageBase64.startsWith('http')) {
+          // ✅ FIX: Live product aksar URL hotay hain, isliye Network Image bhi support add kardi hai
+          imageWidget = Image.network(
+            imageBase64,
+            fit: BoxFit.cover,
+            width: 80,
+            height: 80,
+          );
+        } else {
+          String cleanBase64 = imageBase64.contains(',')
+              ? imageBase64.split(',').last
+              : imageBase64;
+          imageWidget = Image.memory(
+            base64Decode(cleanBase64),
+            fit: BoxFit.cover,
+            width: 80,
+            height: 80,
+          );
+        }
       } catch (_) {}
     }
 
@@ -187,6 +203,7 @@ class VendorMyProductsScreen extends StatelessWidget {
     // Check if it's an edit or delete request
     bool isEditReq = (product.toMap()['isEditRequest'] == true);
     bool isDeleteReq = (product.toMap()['isDeleteRequest'] == true);
+    bool isHold = product.status == 'hold';
 
     if (isDeleteReq) {
       statusText = "DELETE PENDING";
@@ -194,6 +211,9 @@ class VendorMyProductsScreen extends StatelessWidget {
     } else if (isEditReq) {
       statusText = "EDIT PENDING";
       statusColor = Colors.blueAccent;
+    } else if (isHold) {
+      statusText = "ON HOLD";
+      statusColor = Colors.amberAccent.shade700;
     }
 
     return Card(
@@ -242,7 +262,7 @@ class VendorMyProductsScreen extends StatelessWidget {
                         ),
                       ),
                       // ACTION BUTTONS
-                      if (!isDeleteReq) // Hide actions if it's already a delete request
+                      if (!isDeleteReq)
                         Row(
                           children: [
                             GestureDetector(
@@ -275,24 +295,54 @@ class VendorMyProductsScreen extends StatelessWidget {
                         ),
                     ],
                   ),
+                  const SizedBox(height: 4),
+
+                  // ✅ FIX: Brand aur Model add kar diye gaye hain
                   Text(
-                    "Model: ${product.modelNumber}",
+                    [
+                      if (product.brand.isNotEmpty) "Brand: ${product.brand}",
+                      if (product.modelNumber.isNotEmpty)
+                        "Model: ${product.modelNumber}",
+                    ].join(" | "),
                     style: GoogleFonts.comicNeue(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
                       color: Colors.black54,
                     ),
                   ),
+
+                  // ✅ FIX: Agar Mobile hai toh RAM aur ROM show karein
+                  if (product.ram != null || product.storage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2.0),
+                      child: Text(
+                        [
+                          if (product.ram != null && product.ram!.isNotEmpty)
+                            "RAM: ${product.ram}",
+                          if (product.storage != null &&
+                              product.storage!.isNotEmpty)
+                            "ROM: ${product.storage}",
+                        ].join(" | "),
+                        style: GoogleFonts.comicNeue(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.purple.shade700,
+                        ),
+                      ),
+                    ),
+
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // ✅ FIX: Sale price ki jagah Purchase price show ho rahi hai (Kyunke vendor admin ko is rate par bechta hai)
                       Text(
-                        "Sale: PKR ${product.salePrice.toStringAsFixed(0)}",
+                        "Price: PKR ${product.purchasePrice.toStringAsFixed(0)}",
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
-                          color: Colors.blueAccent,
+                          color: Colors
+                              .green, // Darker green for visibility on white
                         ),
                       ),
                       Container(
@@ -325,7 +375,7 @@ class VendorMyProductsScreen extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  // If rejected, show reason
+
                   if (!isLive && product.status == 'rejected')
                     Padding(
                       padding: const EdgeInsets.only(top: 5),
@@ -335,6 +385,30 @@ class VendorMyProductsScreen extends StatelessWidget {
                           fontSize: 11,
                           color: Colors.red.shade900,
                           fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+
+                  if (!isLive && isHold)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.amberAccent),
+                        ),
+                        child: Text(
+                          "Hold Reason: ${product.holdReason ?? 'Admin se rabta karein'}",
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.amber.shade900,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),

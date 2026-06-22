@@ -79,6 +79,40 @@ class VendorInfoSection extends ConsumerWidget {
         ),
 
         const SizedBox(height: 20),
+
+        // ✅ NAYA FIELD: TikTok URL
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "TikTok Video URL (Optional)",
+              style: GoogleFonts.comicNeue(
+                color: textColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 5),
+            TextFormField(
+              controller: viewModel.tiktokUrlCtrl,
+              style: const TextStyle(color: Colors.black),
+              cursorColor: Colors.black,
+              decoration: InputDecoration(
+                hintText: "https://www.tiktok.com/@user/video/...",
+                hintStyle: const TextStyle(color: Colors.grey),
+                filled: true,
+                fillColor: cardColor,
+                prefixIcon: const Icon(
+                  Icons.link,
+                  color: Colors.blueAccent,
+                ), // Link icon
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ],
+        ),
+
         _buildSectionTitle("Pricing (PKR)"),
 
         Row(

@@ -1,19 +1,64 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import '../../../dashboard/viewmodels/dashboard_viewmodel.dart';
+import '../../../dashboard/views/dashboard_screen.dart';
 import '../../controllers/vendor_finance_controller.dart';
 
-class VendorFinanceScreen extends StatelessWidget {
+class VendorFinanceScreen extends ConsumerWidget {
   const VendorFinanceScreen({super.key});
 
+  // ✅ NEW: Dialog to show Screenshot Image
+  void _showScreenshot(BuildContext context, String imageString) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.topRight,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: imageString.startsWith('http')
+                  ? Image.network(imageString, fit: BoxFit.contain)
+                  : Image.memory(
+                      base64Decode(imageString),
+                      fit: BoxFit.contain,
+                    ),
+            ),
+            Positioned(
+              top: -10,
+              right: -10,
+              child: IconButton(
+                icon: const Icon(Icons.cancel, color: Colors.red, size: 35),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final controller = Get.put(VendorFinanceController());
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F9),
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+          onPressed: () {
+            // Dashbaord tab ko 0 index (Home) pe le jayega
+            ref.read(dashboardNavProvider.notifier).state = 0;
+            Get.back();
+          },
+        ),
         title: Text(
           "Accounting & Ledger",
           style: GoogleFonts.comicNeue(
@@ -70,7 +115,6 @@ class VendorFinanceScreen extends StatelessWidget {
                 ],
               ),
 
-              // ✅ FIX: Chart Removed completely from here!
               const SizedBox(height: 30),
 
               // ── Ledger History List ──
@@ -134,7 +178,6 @@ class VendorFinanceScreen extends StatelessWidget {
                             fontSize: 15,
                           ),
                         ),
-                        // ✅ FIX: Only Date will show, No Time (12:00 AM Issue Fixed)
                         subtitle: Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
@@ -146,15 +189,78 @@ class VendorFinanceScreen extends StatelessWidget {
                             ),
                           ),
                         ),
-                        trailing: Text(
-                          "${item.isPayment ? '+' : '-'} PKR ${item.amount.toStringAsFixed(0)}",
-                          style: GoogleFonts.comicNeue(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                            color: item.isPayment
-                                ? Colors.green.shade700
-                                : Colors.red.shade700,
-                          ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisSize: MainAxisSize
+                              .min, // ✅ Important for ListTile trailing
+                          children: [
+                            Text(
+                              "${item.isPayment ? '+' : '-'} PKR ${item.amount.toStringAsFixed(0)}",
+                              style: GoogleFonts.comicNeue(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 18,
+                                color: item.isPayment
+                                    ? Colors.green.shade700
+                                    : Colors.red.shade700,
+                              ),
+                            ),
+                            // ✅ NEW: Show Pending Status for Uncleared Cheques
+                            if (item.paymentMode == 'Cheque' && !item.isCleared)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  "Pending Clearance",
+                                  style: TextStyle(
+                                    color: Colors.orange.shade800,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            // ✅ NEW: Show Screenshot option if Payment has a proof attached
+                            if (item.isPayment &&
+                                item.screenshot != null &&
+                                item.screenshot!.isNotEmpty) ...[
+                              const SizedBox(height: 5),
+                              InkWell(
+                                onTap: () =>
+                                    _showScreenshot(context, item.screenshot!),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade50,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: Colors.blue.shade200,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.image,
+                                        size: 14,
+                                        color: Colors.blue.shade700,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        "View Proof",
+                                        style: TextStyle(
+                                          color: Colors.blue.shade700,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     );

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -10,6 +11,39 @@ import '../../repository/vendor_orders_repository.dart';
 class VendorBillDetailScreen extends StatelessWidget {
   final VendorOrderModel order;
   const VendorBillDetailScreen({super.key, required this.order});
+
+  // ✅ NEW: Dialog to show Screenshot Image
+  void _showScreenshot(BuildContext context, String imageString) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.topRight,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: imageString.startsWith('http')
+                  ? Image.network(imageString, fit: BoxFit.contain)
+                  : Image.memory(
+                      base64Decode(imageString),
+                      fit: BoxFit.contain,
+                    ),
+            ),
+            Positioned(
+              top: -10,
+              right: -10,
+              child: IconButton(
+                icon: const Icon(Icons.cancel, color: Colors.red, size: 35),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -258,12 +292,26 @@ class VendorBillDetailScreen extends StatelessWidget {
                                 ),
                               ),
                               DataCell(
-                                Text(
-                                  statusText,
-                                  style: TextStyle(
-                                    color: statusColor,
-                                    fontWeight: FontWeight.w900,
-                                  ),
+                                // ✅ NEW: Icon added before Status text specifically if Paid > 0
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (paid > 0) ...[
+                                      Icon(
+                                        Icons.image,
+                                        size: 16,
+                                        color: Colors.green.shade700,
+                                      ),
+                                      const SizedBox(width: 4),
+                                    ],
+                                    Text(
+                                      statusText,
+                                      style: TextStyle(
+                                        color: statusColor,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -360,13 +408,61 @@ class VendorBillDetailScreen extends StatelessWidget {
                               ),
                             ],
                           ),
-                          Text(
-                            "+ PKR ${amt.toStringAsFixed(0)}",
-                            style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              color: Colors.green.shade900,
-                              fontSize: 16,
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                "+ PKR ${amt.toStringAsFixed(0)}",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.green.shade900,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              // ✅ NEW: Actual View Screenshot Button inside Receipts Section
+                              if (pay['screenshot'] != null &&
+                                  pay['screenshot'].toString().isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                InkWell(
+                                  onTap: () => _showScreenshot(
+                                    context,
+                                    pay['screenshot'],
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: Colors.blue.shade200,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.image,
+                                          size: 14,
+                                          color: Colors.blue.shade700,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          "View Proof",
+                                          style: TextStyle(
+                                            color: Colors.blue.shade700,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                       ),
