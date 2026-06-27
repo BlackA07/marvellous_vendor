@@ -86,25 +86,25 @@ class AuthViewModel extends ChangeNotifier {
     String email,
     String password,
     String storeName,
+    String? profileImage, // ✅ Naya parameter add kiya
   ) async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Check agar account pehle se saved hai, toh update karein
     int existingIndex = savedAccounts.indexWhere(
       (acc) => acc['email'] == email,
     );
+
+    final accountData = {
+      'email': email,
+      'password': password,
+      'storeName': storeName,
+      'profileImage': profileImage ?? '', // ✅ Image save karein
+    };
+
     if (existingIndex != -1) {
-      savedAccounts[existingIndex] = {
-        'email': email,
-        'password': password,
-        'storeName': storeName,
-      };
+      savedAccounts[existingIndex] = accountData;
     } else {
-      savedAccounts.add({
-        'email': email,
-        'password': password,
-        'storeName': storeName,
-      });
+      savedAccounts.add(accountData);
     }
 
     await prefs.setString('saved_accounts', jsonEncode(savedAccounts));
@@ -598,6 +598,7 @@ class AuthViewModel extends ChangeNotifier {
             loginEmailCtrl.text.trim(),
             loginPassCtrl.text.trim(),
             vendorDoc.get('storeName') ?? 'Unknown Store',
+            vendorDoc.get('profileImage'), // ✅ Image yahan se pass hogi
           );
           setLoading(false);
           Get.offAll(() => const DashboardScreen());
@@ -779,6 +780,13 @@ class AuthViewModel extends ChangeNotifier {
       setLoading(false);
       _showError("An error occurred: $e");
     }
+  }
+
+  Future<void> removeAccount(int index) async {
+    final prefs = await SharedPreferences.getInstance();
+    savedAccounts.removeAt(index);
+    await prefs.setString('saved_accounts', jsonEncode(savedAccounts));
+    notifyListeners();
   }
 
   void _showError(String message) {

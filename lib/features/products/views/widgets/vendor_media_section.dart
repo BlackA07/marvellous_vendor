@@ -1,3 +1,4 @@
+// Path: lib/features/products/views/widgets/vendor_media_section.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -20,6 +21,18 @@ class VendorMediaSection extends StatelessWidget {
     required this.accentColor,
     required this.textColor,
   });
+
+  // ✅ FIX: Helper function jo decide karega ke image URL hai ya Base64
+  ImageProvider _getImageProvider(String imageData) {
+    if (imageData.startsWith('http') || imageData.startsWith('https')) {
+      return NetworkImage(imageData);
+    } else {
+      String cleanBase64 = imageData.contains(',')
+          ? imageData.split(',').last
+          : imageData;
+      return MemoryImage(base64Decode(cleanBase64));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +65,9 @@ class VendorMediaSection extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.grey.shade300),
                       image: DecorationImage(
-                        image: MemoryImage(base64Decode(images[index])),
+                        image: _getImageProvider(
+                          images[index],
+                        ), // ✅ FIX APPLIED HERE
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -127,10 +142,7 @@ class VendorMediaSection extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: cardColor,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: accentColor,
-                      width: 2,
-                    ), // Dashed border alternative
+                    border: Border.all(color: accentColor, width: 2),
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,

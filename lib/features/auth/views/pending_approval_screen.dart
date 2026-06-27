@@ -84,18 +84,6 @@ class PendingApprovalScreen extends StatelessWidget {
                 if (rejectReason.isEmpty)
                   rejectReason = 'No reason provided. Contact admin.';
 
-                WidgetsBinding.instance.addPostFrameCallback((_) async {
-                  try {
-                    await FirebaseFirestore.instance
-                        .collection('vendors')
-                        .doc(user.uid)
-                        .delete();
-                  } catch (_) {}
-                  try {
-                    await user.delete();
-                  } catch (_) {}
-                });
-
                 return _buildStatusScreen(
                   icon: Icons.cancel_outlined,
                   iconColor: Colors.redAccent,

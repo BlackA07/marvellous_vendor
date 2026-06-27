@@ -1,4 +1,4 @@
-import 'dart:convert';
+// Path: lib/features/products/views/add_product_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,32 +7,54 @@ import '../../dashboard/viewmodels/dashboard_viewmodel.dart';
 import '../viewmodels/vendor_add_product_viewmodel.dart';
 import 'widgets/vendor_media_section.dart';
 import 'widgets/vendor_info_section.dart';
-import '../models/product_model.dart'; // ✅ Import Product Model
+import '../models/product_model.dart';
 
-class VendorAddProductScreen extends ConsumerWidget {
+class VendorAddProductScreen extends ConsumerStatefulWidget {
   final ProductModel?
   productToEdit; // ✅ If this is passed, it opens in Edit Mode
 
   const VendorAddProductScreen({super.key, this.productToEdit});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final viewModel = ref.watch(vendorAddProductProvider);
-    final viewModelNotifier = ref.read(vendorAddProductProvider.notifier);
+  ConsumerState<VendorAddProductScreen> createState() =>
+      _VendorAddProductScreenState();
+}
 
+class _VendorAddProductScreenState
+    extends ConsumerState<VendorAddProductScreen> {
+  final _formKey = GlobalKey<FormState>();
+
+  // ✅ NAYA: Screen ko oopar scroll karne ke liye controller
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
     // ✅ Initialize Edit Mode if product is passed
-    if (productToEdit != null && !viewModel.isEditInitialized) {
+    if (widget.productToEdit != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        viewModelNotifier.initForEdit(productToEdit!);
+        ref
+            .read(vendorAddProductProvider.notifier)
+            .initForEdit(widget.productToEdit!);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose(); // ✅ Memory leak se bachne ke liye dispose
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewModel = ref.watch(vendorAddProductProvider);
+    final viewModelNotifier = ref.read(vendorAddProductProvider.notifier);
 
     const bgColor = Color(0xFFF5F7FA);
     const cardColor = Colors.white;
     const textColor = Colors.black87;
     const accentColor = Colors.blueAccent;
-
-    final _formKey = GlobalKey<FormState>();
 
     void handleFormSubmit() async {
       bool success = await viewModelNotifier.submitProductRequest(
@@ -104,7 +126,14 @@ class VendorAddProductScreen extends ConsumerWidget {
                             ),
                           ),
                           onPressed: () {
-                            Navigator.pop(dialogContext);
+                            Navigator.pop(dialogContext); // Dialog band karo
+
+                            // ✅ NAYA: Screen ko smoothly top par scroll karo
+                            _scrollController.animateTo(
+                              0.0,
+                              duration: const Duration(milliseconds: 600),
+                              curve: Curves.easeOut,
+                            );
                           },
                         ),
                       ),
@@ -117,7 +146,7 @@ class VendorAddProductScreen extends ConsumerWidget {
                           color: Colors.black87,
                         ),
                         label: const Text(
-                          "Go to Dashboard",
+                          "Go Back",
                           style: TextStyle(
                             color: Colors.black87,
                             fontWeight: FontWeight.bold,
@@ -132,11 +161,7 @@ class VendorAddProductScreen extends ConsumerWidget {
                         ),
                         onPressed: () {
                           Navigator.pop(dialogContext);
-                          if (viewModel.isEditMode) {
-                            Get.back(); // If opened via edit button, go back
-                          } else {
-                            ref.read(dashboardNavProvider.notifier).state = 0;
-                          }
+                          Get.back();
                         },
                       ),
                     ),
@@ -165,18 +190,13 @@ class VendorAddProductScreen extends ConsumerWidget {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
-          onPressed: () {
-            if (viewModel.isEditMode) {
-              Get.back();
-            } else {
-              ref.read(dashboardNavProvider.notifier).state = 0;
-            }
-          },
+          onPressed: () => Get.back(),
         ),
       ),
       body: Stack(
         children: [
           SingleChildScrollView(
+            controller: _scrollController, // ✅ NAYA: Controller attach kiya
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.all(20),
             child: Form(
@@ -219,7 +239,8 @@ class VendorAddProductScreen extends ConsumerWidget {
                   const SizedBox(height: 25),
 
                   VendorMediaSection(
-                    images: viewModel.selectedImagesBase64,
+                    images: viewModel
+                        .combinedImages, // ✅ Yahan updated list pass karein
                     onPickImage: (source) => viewModelNotifier
                         .pickAndCropStoreImage(context, source),
                     onRemoveImage: (index) =>

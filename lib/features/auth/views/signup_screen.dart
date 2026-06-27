@@ -80,98 +80,226 @@ class SignupScreen extends ConsumerWidget {
   }
 
   void _showCategoryDialog(BuildContext context, AuthViewModel viewModel) {
-    TextEditingController newCtrl = TextEditingController();
+    final searchCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: Text(
-          "Add Category",
-          style: GoogleFonts.orbitron(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.withOpacity(0.3)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue, size: 14),
-                  SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      "New categories will be saved after admin approval",
-                      style: TextStyle(color: Colors.blue, fontSize: 11),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final List<Map<String, dynamic>> filtered =
+              viewModel.dbCategories
+                  .where(
+                    (c) => c['name'].toString().toLowerCase().contains(
+                      searchCtrl.text.toLowerCase(),
                     ),
-                  ),
-                ],
+                  )
+                  .toList()
+                ..sort(
+                  (a, b) =>
+                      a['name'].toString().compareTo(b['name'].toString()),
+                );
+
+          return Dialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 40,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    Text(
+                      "Add Category",
+                      style: GoogleFonts.orbitron(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Info box
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Colors.blue,
+                            size: 14,
+                          ),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              "New categories will be saved after admin approval",
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Search field
+                    TextField(
+                      controller: searchCtrl,
+                      style: const TextStyle(color: Colors.white),
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: InputDecoration(
+                        hintText: "Search categories...",
+                        hintStyle: const TextStyle(color: Colors.white38),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Colors.white38,
+                        ),
+                        filled: true,
+                        fillColor: const Color(0xFF2C2C2C),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // List — fixed height
+                    if (filtered.isNotEmpty)
+                      SizedBox(
+                        height: 180,
+                        child: ListView.builder(
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final name = filtered[index]['name'].toString();
+                            final isSelected = viewModel.selectedCategories
+                                .contains(name);
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                name,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.blueAccent
+                                      : Colors.white,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                              trailing: isSelected
+                                  ? const Icon(
+                                      Icons.check_circle,
+                                      color: Colors.blueAccent,
+                                      size: 18,
+                                    )
+                                  : null,
+                              onTap: () {
+                                viewModel.addSelectedCategory(name);
+                                Navigator.pop(ctx);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+
+                    if (filtered.isEmpty && searchCtrl.text.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          "No match found",
+                          style: TextStyle(color: Colors.white38),
+                        ),
+                      ),
+
+                    // Divider
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          Expanded(child: Divider(color: Colors.white24)),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              "OR ADD NEW",
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          Expanded(child: Divider(color: Colors.white24)),
+                        ],
+                      ),
+                    ),
+
+                    // New category field
+                    TextField(
+                      controller: newCtrl,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: "Type New Category",
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        filled: true,
+                        fillColor: const Color(0xFF2C2C2C),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Actions
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text(
+                            "Cancel",
+                            style: TextStyle(color: Colors.white54),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blueAccent,
+                          ),
+                          onPressed: () {
+                            if (newCtrl.text.isNotEmpty) {
+                              viewModel.addNewCategoryLocally(
+                                newCtrl.text.trim(),
+                              );
+                            }
+                            Navigator.pop(ctx);
+                          },
+                          child: const Text(
+                            "Add",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 12),
-            if (viewModel.dbCategories.isNotEmpty) ...[
-              DropdownButtonFormField<String>(
-                dropdownColor: const Color(0xFF2C2C2C),
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: const Color(0xFF2C2C2C),
-                  hintText: "Select Existing",
-                  hintStyle: const TextStyle(color: Colors.white54),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                items: viewModel.dbCategories.map((c) {
-                  return DropdownMenuItem<String>(
-                    value: c['name'],
-                    child: Text(c['name']),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  if (val != null) viewModel.addSelectedCategory(val);
-                  Navigator.pop(ctx);
-                },
-              ),
-              const Padding(
-                padding: EdgeInsets.all(8.0),
-                child: Text("OR", style: TextStyle(color: Colors.white54)),
-              ),
-            ],
-            TextField(
-              controller: newCtrl,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: "Type New Category",
-                hintStyle: const TextStyle(color: Colors.white54),
-                filled: true,
-                fillColor: const Color(0xFF2C2C2C),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (newCtrl.text.isNotEmpty) {
-                viewModel.addNewCategoryLocally(newCtrl.text.trim());
-              }
-              Navigator.pop(ctx);
-            },
-            child: const Text("Add"),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -186,160 +314,271 @@ class SignupScreen extends ConsumerWidget {
       return;
     }
 
-    List<String> availableSubs = [];
-    for (var catName in viewModel.selectedCategories) {
-      var cat = viewModel.dbCategories.firstWhere(
-        (c) => c['name'] == catName,
-        orElse: () => {},
-      );
-      if (cat.isNotEmpty && cat['subCategories'] != null) {
-        availableSubs.addAll(List<String>.from(cat['subCategories']));
-      }
-    }
-    availableSubs = availableSubs.toSet().toList();
-
-    TextEditingController newCtrl = TextEditingController();
+    final searchCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
     String? selectedParentCatForNew = viewModel.selectedCategories.first;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
+        builder: (context, setDialogState) {
+          // Collect all subs from selected categories
+          final List<String> allSubs = [];
+          for (var catName in viewModel.selectedCategories) {
+            final cat = viewModel.dbCategories.firstWhere(
+              (c) => c['name'] == catName,
+              orElse: () => {},
+            );
+            if (cat.isNotEmpty && cat['subCategories'] != null) {
+              allSubs.addAll(List<String>.from(cat['subCategories']));
+            }
+          }
+
+          final List<String> filtered =
+              allSubs
+                  .toSet()
+                  .where(
+                    (s) =>
+                        s.toLowerCase().contains(searchCtrl.text.toLowerCase()),
+                  )
+                  .toList()
+                ..sort();
+
+          return Dialog(
             backgroundColor: const Color(0xFF1E1E1E),
-            title: Text(
-              "Add Sub-Category",
-              style: GoogleFonts.orbitron(color: Colors.white),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green.withOpacity(0.3)),
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 40,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    Text(
+                      "Add Sub-Category",
+                      style: GoogleFonts.orbitron(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.green, size: 14),
-                        SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            "New sub-categories will be saved after admin approval",
-                            style: TextStyle(color: Colors.green, fontSize: 11),
-                          ),
+                    const SizedBox(height: 14),
+
+                    // Info box
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.green.withOpacity(0.3),
                         ),
-                      ],
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Colors.green,
+                            size: 14,
+                          ),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              "New sub-categories will be saved after admin approval",
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (availableSubs.isNotEmpty) ...[
-                    DropdownButtonFormField<String>(
-                      dropdownColor: const Color(0xFF2C2C2C),
+                    const SizedBox(height: 12),
+
+                    // Search field
+                    TextField(
+                      controller: searchCtrl,
                       style: const TextStyle(color: Colors.white),
+                      onChanged: (_) => setDialogState(() {}),
                       decoration: InputDecoration(
+                        hintText: "Search sub-categories...",
+                        hintStyle: const TextStyle(color: Colors.white38),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Colors.white38,
+                        ),
                         filled: true,
                         fillColor: const Color(0xFF2C2C2C),
-                        hintText: "Select Existing",
-                        hintStyle: const TextStyle(color: Colors.white54),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      items: availableSubs
+                    ),
+                    const SizedBox(height: 8),
+
+                    // List — fixed height
+                    if (filtered.isNotEmpty)
+                      SizedBox(
+                        height: 160,
+                        child: ListView.builder(
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final name = filtered[index];
+                            final isSelected = viewModel.selectedSubCategories
+                                .contains(name);
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                name,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.greenAccent
+                                      : Colors.white,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                              trailing: isSelected
+                                  ? const Icon(
+                                      Icons.check_circle,
+                                      color: Colors.greenAccent,
+                                      size: 18,
+                                    )
+                                  : null,
+                              onTap: () {
+                                viewModel.addSelectedSubCategory(name);
+                                Navigator.pop(ctx);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+
+                    if (filtered.isEmpty && searchCtrl.text.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          "No match found",
+                          style: TextStyle(color: Colors.white38),
+                        ),
+                      ),
+
+                    // Divider
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          Expanded(child: Divider(color: Colors.white24)),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              "OR ADD NEW",
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          Expanded(child: Divider(color: Colors.white24)),
+                        ],
+                      ),
+                    ),
+
+                    // Parent category dropdown
+                    DropdownButtonFormField<String>(
+                      dropdownColor: const Color(0xFF2C2C2C),
+                      style: const TextStyle(color: Colors.white),
+                      value: selectedParentCatForNew,
+                      decoration: InputDecoration(
+                        labelText: "Under which Category?",
+                        labelStyle: const TextStyle(color: Colors.blueAccent),
+                        filled: true,
+                        fillColor: const Color(0xFF2C2C2C),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      items: viewModel.selectedCategories
                           .map(
-                            (s) => DropdownMenuItem<String>(
-                              value: s,
-                              child: Text(s),
+                            (c) => DropdownMenuItem<String>(
+                              value: c,
+                              child: Text(c),
                             ),
                           )
                           .toList(),
-                      onChanged: (val) {
-                        if (val != null) viewModel.addSelectedSubCategory(val);
-                        Navigator.pop(ctx);
-                      },
+                      onChanged: (val) =>
+                          setDialogState(() => selectedParentCatForNew = val),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Text(
-                        "OR ADD NEW",
-                        style: TextStyle(
-                          color: Colors.white54,
-                          fontWeight: FontWeight.bold,
+                    const SizedBox(height: 10),
+
+                    // New sub-category field
+                    TextField(
+                      controller: newCtrl,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: "Type New Sub-Category",
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        filled: true,
+                        fillColor: const Color(0xFF2C2C2C),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
                     ),
-                  ],
-                  DropdownButtonFormField<String>(
-                    dropdownColor: const Color(0xFF2C2C2C),
-                    style: const TextStyle(color: Colors.white),
-                    value: selectedParentCatForNew,
-                    decoration: InputDecoration(
-                      labelText: "Under which Category?",
-                      labelStyle: const TextStyle(color: Colors.blueAccent),
-                      filled: true,
-                      fillColor: const Color(0xFF2C2C2C),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    items: viewModel.selectedCategories
-                        .map(
-                          (c) => DropdownMenuItem<String>(
-                            value: c,
-                            child: Text(c),
+                    const SizedBox(height: 16),
+
+                    // Actions
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text(
+                            "Cancel",
+                            style: TextStyle(color: Colors.white54),
                           ),
-                        )
-                        .toList(),
-                    onChanged: (val) =>
-                        setState(() => selectedParentCatForNew = val),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: newCtrl,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: "Type New Sub-Category",
-                      hintStyle: const TextStyle(color: Colors.white54),
-                      filled: true,
-                      fillColor: const Color(0xFF2C2C2C),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                          ),
+                          onPressed: () {
+                            if (newCtrl.text.isNotEmpty &&
+                                selectedParentCatForNew != null) {
+                              viewModel.addNewSubCategoryLocally(
+                                selectedParentCatForNew!,
+                                newCtrl.text.trim(),
+                              );
+                            }
+                            Navigator.pop(ctx);
+                          },
+                          child: const Text(
+                            "Save",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text("Cancel"),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (newCtrl.text.isNotEmpty &&
-                      selectedParentCatForNew != null) {
-                    viewModel.addNewSubCategoryLocally(
-                      selectedParentCatForNew!,
-                      newCtrl.text.trim(),
-                    );
-                  }
-                  Navigator.pop(ctx);
-                },
-                child: const Text("Save"),
-              ),
-            ],
           );
         },
       ),
     );
   }
 
-  // ✅ FIX: XFile se image display karna — web pe .path URL hota hai, mobile pe file path
   Widget _buildImageWidget(
     XFile xfile, {
     double height = 80,
@@ -403,7 +642,6 @@ class SignupScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 20),
 
-                // ✅ FIX: faceImage → faceImageFile (XFile)
                 GestureDetector(
                   onTap: () =>
                       _showImagePickerDialog(context, ref, isStoreImage: false),
@@ -516,7 +754,6 @@ class SignupScreen extends ConsumerWidget {
                     spacing: 10,
                     runSpacing: 10,
                     children: [
-                      // ✅ FIX: storeImages → storeImageFiles (XFile list)
                       ...List.generate(
                         viewModel.storeImageFiles.length,
                         (index) => Stack(
@@ -546,7 +783,6 @@ class SignupScreen extends ConsumerWidget {
                           ],
                         ),
                       ),
-                      // ✅ FIX: storeImages.length → storeImageFiles.length
                       if (viewModel.storeImageFiles.length < 4)
                         GestureDetector(
                           onTap: () => _showImagePickerDialog(
