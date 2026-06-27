@@ -2,17 +2,21 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:intl/intl.dart';
+import '../../dashboard/viewmodels/dashboard_viewmodel.dart';
 import '../../dashboard/views/dashboard_screen.dart';
 import '../viewmodels/vendor_products_controller.dart';
 import '../models/product_model.dart';
 import 'add_product_screen.dart';
 
-class VendorMyProductsScreen extends StatelessWidget {
+class VendorMyProductsScreen extends ConsumerWidget {
   const VendorMyProductsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // ✅ ref ka access mil gaya
     final controller = Get.put(VendorProductsController());
 
     return DefaultTabController(
@@ -22,8 +26,11 @@ class VendorMyProductsScreen extends StatelessWidget {
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-            onPressed: () =>
-                Get.back(), // ✅ offAll ki jagah back — dashboard pe wapas
+            onPressed: () {
+              // ✅ Ab yahan ref use kar sakte hain
+              ref.read(dashboardNavProvider.notifier).state = 0;
+              Get.back();
+            },
           ),
           title: Text(
             "My Products",

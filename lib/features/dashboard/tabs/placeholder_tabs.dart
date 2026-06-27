@@ -8,6 +8,7 @@ import '../../orders/presentation/screens/vendor_orders_screen.dart';
 import '../../products/views/vendor_my_products_screen.dart';
 import '../../finance/presentation/screens/vendor_finance_screen.dart';
 // ✅ Dashboard ViewModel Import (Back Navigation handle karne ke liye)
+import '../../reports/vendor_report_screen.dart';
 import '../viewmodels/dashboard_viewmodel.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ class ReportsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _comingSoon("Reports", Icons.bar_chart_rounded, Colors.amberAccent);
+    return const VendorReportScreen();
   }
 }
 

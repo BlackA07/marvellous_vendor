@@ -376,10 +376,14 @@ class VendorInfoSection extends ConsumerWidget {
             ),
             validator: (val) {
               if (label.contains("Optional") ||
-                  label.contains("Custom Warranty"))
+                  label.contains("Custom Warranty") ||
+                  label.contains("Fake Discounted") ||
+                  label.contains("Sub Category") ||
+                  label.contains("Warranty Provider") ||
+                  label.contains("TikTok Video URL"))
                 return null;
               if (val == null || val.trim().isEmpty)
-                return "This field is required";
+                return "⚠ ${label.replaceAll(' *', '')} is required";
               return null;
             },
           ),
@@ -412,11 +416,19 @@ class VendorInfoSection extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: safeCategory,
+                child: TextFormField(
+                  readOnly: true, // ✅ Sirf tap allow karega, type nahi
+                  controller: TextEditingController(text: safeCategory ?? ''),
+                  style: const TextStyle(color: Colors.black, fontSize: 16),
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: cardColor,
+                    hintText: "Select Category",
+                    hintStyle: const TextStyle(color: Colors.black54),
+                    suffixIcon: const Icon(
+                      Icons.arrow_drop_down,
+                      color: Colors.black54,
+                    ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 15,
@@ -430,26 +442,22 @@ class VendorInfoSection extends ConsumerWidget {
                       borderSide: BorderSide(color: Colors.grey.shade300),
                     ),
                   ),
-                  hint: const Text("Select Category"),
-                  // ✅ FIX: Strongly typed DropdownMenuItem<String> for Web Safety
-                  items: viewModel.categoryNames.map<DropdownMenuItem<String>>((
-                    String cat,
-                  ) {
-                    return DropdownMenuItem<String>(
-                      value: cat,
-                      child: Text(
-                        cat,
-                        style: const TextStyle(color: Colors.black),
-                      ),
+                  validator: (val) => (val == null || val.isEmpty)
+                      ? "Please select a category"
+                      : null,
+                  onTap: () {
+                    _openSearchableBottomSheet(
+                      context,
+                      "Select Category",
+                      viewModel.categoryNames,
+                      (selected) {
+                        viewModelNotifier.selectedCategory = selected;
+                        viewModelNotifier.selectedSubCategory =
+                            null; // Parent change ho to child reset
+                        viewModelNotifier.notifyListeners();
+                      },
                     );
-                  }).toList(),
-                  onChanged: (String? val) {
-                    viewModelNotifier.selectedCategory = val;
-                    viewModelNotifier.selectedSubCategory = null;
-                    viewModelNotifier.notifyListeners();
                   },
-                  validator: (val) =>
-                      val == null ? "Please select a category" : null,
                 ),
               ),
               const SizedBox(width: 10),
@@ -489,11 +497,21 @@ class VendorInfoSection extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: safeSubCategory,
+                child: TextFormField(
+                  readOnly: true,
+                  controller: TextEditingController(
+                    text: safeSubCategory ?? '',
+                  ),
+                  style: const TextStyle(color: Colors.black, fontSize: 16),
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: cardColor,
+                    hintText: "Select Sub Category",
+                    hintStyle: const TextStyle(color: Colors.black54),
+                    suffixIcon: const Icon(
+                      Icons.arrow_drop_down,
+                      color: Colors.black54,
+                    ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 15,
@@ -507,22 +525,16 @@ class VendorInfoSection extends ConsumerWidget {
                       borderSide: BorderSide(color: Colors.grey.shade300),
                     ),
                   ),
-                  hint: const Text("Select Sub Category"),
-                  // ✅ FIX: Strongly typed DropdownMenuItem<String> for Web Safety
-                  items: viewModel.availableSubCategories
-                      .map<DropdownMenuItem<String>>((String sub) {
-                        return DropdownMenuItem<String>(
-                          value: sub,
-                          child: Text(
-                            sub,
-                            style: const TextStyle(color: Colors.black),
-                          ),
-                        );
-                      })
-                      .toList(),
-                  onChanged: (String? val) {
-                    viewModelNotifier.selectedSubCategory = val;
-                    viewModelNotifier.notifyListeners();
+                  onTap: () {
+                    _openSearchableBottomSheet(
+                      context,
+                      "Select Sub Category",
+                      viewModel.availableSubCategories,
+                      (selected) {
+                        viewModelNotifier.selectedSubCategory = selected;
+                        viewModelNotifier.notifyListeners();
+                      },
+                    );
                   },
                 ),
               ),
@@ -540,6 +552,120 @@ class VendorInfoSection extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+
+  // ✅ NAYA METHOD: Search, Sort aur Keyboard handle karne ke liye (Ye bhi class k andar add karein)
+  void _openSearchableBottomSheet(
+    BuildContext context,
+    String title,
+    List<String> items,
+    Function(String) onSelected,
+  ) {
+    TextEditingController searchCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // ✅ Keyboard aane pe expand hone dega
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            // ✅ A to Z Sort & Search Filter
+            List<String> filtered =
+                items
+                    .where(
+                      (e) => e.toLowerCase().contains(
+                        searchCtrl.text.toLowerCase(),
+                      ),
+                    )
+                    .toList()
+                  ..sort();
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7, // Screen ka 70%
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(
+                  context,
+                ).viewInsets.bottom, // ✅ Keyboard Override Fix
+              ),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.orbitron(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    // Search TextField
+                    TextField(
+                      controller: searchCtrl,
+                      style: const TextStyle(color: Colors.white),
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        hintText: "Search here...",
+                        hintStyle: const TextStyle(color: Colors.white38),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Colors.white38,
+                        ),
+                        filled: true,
+                        fillColor: const Color(0xFF2C2C2C),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    // Result List
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? const Center(
+                              child: Text(
+                                "No match found",
+                                style: TextStyle(color: Colors.white54),
+                              ),
+                            )
+                          : ListView.builder(
+                              physics: const BouncingScrollPhysics(),
+                              itemCount: filtered.length,
+                              itemBuilder: (context, index) {
+                                return ListTile(
+                                  title: Text(
+                                    filtered[index],
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                  trailing: const Icon(
+                                    Icons.arrow_forward_ios,
+                                    color: Colors.white38,
+                                    size: 14,
+                                  ),
+                                  onTap: () {
+                                    onSelected(filtered[index]);
+                                    Navigator.pop(ctx);
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

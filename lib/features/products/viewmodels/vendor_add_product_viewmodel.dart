@@ -57,6 +57,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
   bool isEditMode = false;
   bool isEditInitialized = false;
   String? editOriginalProductId;
+  List<String> combinedImages = [];
 
   final ImagePicker _picker = ImagePicker();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -74,7 +75,9 @@ class VendorAddProductViewModel extends ChangeNotifier {
     isEditMode = true;
     isEditInitialized = true;
     editOriginalProductId = product.id;
-    tiktokUrlCtrl.text = product.tiktokVideoUrl ?? ''; // ✅ NAYA FIELD
+
+    // Controllers fill karna
+    tiktokUrlCtrl.text = product.tiktokVideoUrl ?? '';
     nameCtrl.text = product.name;
     modelCtrl.text = product.modelNumber;
     descCtrl.text = product.description;
@@ -89,7 +92,20 @@ class VendorAddProductViewModel extends ChangeNotifier {
     selectedCategory = product.category;
     selectedSubCategory = product.subCategory;
 
-    selectedImagesBase64 = List<String>.from(product.images);
+    // ✅ Combined List mein purani images load karna
+    // Taake Edit mode mein purani images pehle se nazar ayen
+    combinedImages = List<String>.from(product.images);
+
+    // Warranty handling
+    // Agar warranty format mein "(" hai, to duration extract karo
+    if (product.warranty.contains('(')) {
+      selectedWarrantyDuration = product.warranty.split('(').first.trim();
+      String types = product.warranty.split('(').last.replaceAll(')', '');
+      hasCompanyWarranty = types.contains('Company');
+      hasShopWarranty = types.contains('Shop');
+    } else {
+      selectedWarrantyDuration = product.warranty;
+    }
 
     _checkIfMobile();
     notifyListeners();
@@ -213,10 +229,14 @@ class VendorAddProductViewModel extends ChangeNotifier {
     String duration = selectedWarrantyDuration;
     if (customWarrantyCtrl.text.trim().isNotEmpty)
       duration = customWarrantyCtrl.text.trim();
+
     List<String> types = [];
     if (hasCompanyWarranty) types.add("Company");
     if (hasShopWarranty) types.add("Shop");
+
+    // ✅ Agar dono false hain (yani select nahi kiye), toh sirf duration return hogi
     if (types.isEmpty) return duration;
+
     return "$duration (${types.join(' & ')} Warranty)";
   }
 
@@ -224,7 +244,8 @@ class VendorAddProductViewModel extends ChangeNotifier {
     BuildContext context,
     ImageSource source,
   ) async {
-    if (selectedImagesBase64.length >= 4) {
+    if (combinedImages.length >= 4) {
+      // selectedImagesBase64 ki jagah combinedImages
       _showSnackBar(
         context,
         "Limit Reached",
@@ -254,7 +275,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
         );
         if (croppedFile != null) {
           final bytes = await croppedFile.readAsBytes();
-          selectedImagesBase64.add(base64Encode(bytes));
+          combinedImages.add(base64Encode(bytes)); // ✅ Combined mein add karein
           notifyListeners();
         }
       }
@@ -262,7 +283,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
   }
 
   void removeImage(int index) {
-    selectedImagesBase64.removeAt(index);
+    combinedImages.removeAt(index); // ✅ Combined se remove karein
     notifyListeners();
   }
 
@@ -270,7 +291,51 @@ class VendorAddProductViewModel extends ChangeNotifier {
     BuildContext context,
     GlobalKey<FormState> formKey,
   ) async {
-    if (!formKey.currentState!.validate()) return false;
+    // ✅ 1. Form Validation (Ye text fields pe red error show karega)
+    if (!formKey.currentState!.validate()) {
+      _showSnackBar(
+        context,
+        "Form Error",
+        "Kuch fields khali hain ya galat format mein hain. Check karein!",
+        Colors.redAccent,
+      );
+      return false;
+    }
+
+    final Map<String, String> requiredFields = {
+      'Product Name': nameCtrl.text,
+      'Model Number': modelCtrl.text,
+      'Description': descCtrl.text,
+      'Brand': brandCtrl.text,
+      'Sale Price (Marvellous)': purchaseCtrl.text,
+      'Sale Price (Customers)': saleCtrl.text,
+    };
+
+    for (var entry in requiredFields.entries) {
+      if (entry.value.trim().isEmpty) {
+        _showSnackBar(
+          context,
+          "Missing Field",
+          "\"${entry.key}\" khali hai — please fill karein!",
+          Colors.redAccent,
+        );
+        return false;
+      }
+    }
+
+    // ✅ 3. Agar Product Mobile hai toh RAM aur Storage bhi zaroori hai
+    if (isMobile &&
+        (ramCtrl.text.trim().isEmpty || storageCtrl.text.trim().isEmpty)) {
+      _showSnackBar(
+        context,
+        "Missing Info",
+        "Mobile ke liye RAM aur Storage fill karna zaroori hai!",
+        Colors.redAccent,
+      );
+      return false;
+    }
+
+    // ✅ 4. Category Check
     if (selectedCategory == null) {
       _showSnackBar(
         context,
@@ -280,7 +345,9 @@ class VendorAddProductViewModel extends ChangeNotifier {
       );
       return false;
     }
-    if (selectedImagesBase64.isEmpty) {
+
+    // ✅ 5. Images Check
+    if (combinedImages.isEmpty) {
       _showSnackBar(
         context,
         "Required",
@@ -298,17 +365,17 @@ class VendorAddProductViewModel extends ChangeNotifier {
         name: nameCtrl.text.trim(),
         modelNumber: modelCtrl.text.trim(),
         description: descCtrl.text.trim(),
-        tiktokVideoUrl: tiktokUrlCtrl.text.trim(), // ✅ NAYA FIELD
+        tiktokVideoUrl: tiktokUrlCtrl.text.trim(), // Optional field
         category: selectedCategory!,
         subCategory: selectedSubCategory ?? "General",
-        brand: brandCtrl.text.isEmpty ? "Generic" : brandCtrl.text.trim(),
+        brand: brandCtrl.text.trim(), // Generic ki jagah ab mandatory hai
         purchasePrice: double.tryParse(purchaseCtrl.text) ?? 0,
         salePrice: double.tryParse(saleCtrl.text) ?? 0,
         originalPrice: double.tryParse(originalCtrl.text) ?? 0,
         stockQuantity: 1,
         vendorId: currentVendorId,
         vendorName: currentVendorName,
-        images: selectedImagesBase64,
+        images: combinedImages,
         dateAdded: selectedDate,
         deliveryLocation: "Pending Admin Review",
         warranty: _getCombinedWarranty(),
@@ -324,8 +391,6 @@ class VendorAddProductViewModel extends ChangeNotifier {
       Map<String, dynamic> dataToSave = requestProduct.toMap();
 
       if (isEditMode) {
-        // ✅ Check karen ke kya ye product already 'product_requests' mein exist karta hai?
-        // Agar editOriginalProductId null nahi hai toh check karein.
         if (editOriginalProductId != null) {
           var requestDoc = await _firestore
               .collection('product_requests')
@@ -333,30 +398,23 @@ class VendorAddProductViewModel extends ChangeNotifier {
               .get();
 
           if (requestDoc.exists) {
-            // ✅ Agar ye pehle se request hai (pending/hold wagera), toh naya mat banao balkay isi ko OVERWRITE karo
             dataToSave['isEditRequest'] =
-                requestDoc.data()?['isEditRequest'] ??
-                false; // purana flag preserve karein
+                requestDoc.data()?['isEditRequest'] ?? false;
             dataToSave['originalProductId'] = requestDoc
-                .data()?['originalProductId']; // purana parent preserve karein
-            dataToSave.remove(
-              'holdReason',
-            ); // Hold reason remove kardo kyunke ab theek kar dia hai
+                .data()?['originalProductId'];
+            dataToSave.remove('holdReason');
 
             await _firestore
                 .collection('product_requests')
                 .doc(editOriginalProductId)
                 .update(dataToSave);
           } else {
-            // ✅ Agar requestDoc mein nahi hai, iska matlab vendor live product ko edit kar raha hai
-            // Toh ab naya 'Edit Request' document create karein
             dataToSave['isEditRequest'] = true;
             dataToSave['originalProductId'] = editOriginalProductId;
             await _firestore.collection('product_requests').add(dataToSave);
           }
         }
       } else {
-        // ✅ Agar naya add kar raha hai toh add hi hoga
         await _firestore.collection('product_requests').add(dataToSave);
       }
 
@@ -373,7 +431,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
 
   void _clearForm() {
     nameCtrl.clear();
-    tiktokUrlCtrl.clear(); // ✅ NAYA FIELD
+    tiktokUrlCtrl.clear();
     modelCtrl.clear();
     descCtrl.clear();
     brandCtrl.clear();
@@ -383,6 +441,10 @@ class VendorAddProductViewModel extends ChangeNotifier {
     saleCtrl.clear();
     originalCtrl.clear();
     customWarrantyCtrl.clear();
+
+    // ✅ YAHAN ADD KAREIN:
+    combinedImages.clear(); // Purani images saaf ho jayengi
+
     selectedImagesBase64.clear();
     hasCompanyWarranty = false;
     hasShopWarranty = false;
@@ -392,7 +454,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
     isEditMode = false;
     isEditInitialized = false;
     editOriginalProductId = null;
-    notifyListeners();
+    notifyListeners(); // UI refresh ho jayega aur image gayab ho jayegi
   }
 
   void _showSnackBar(
