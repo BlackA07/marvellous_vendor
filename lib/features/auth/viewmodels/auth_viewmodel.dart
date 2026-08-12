@@ -1,6 +1,8 @@
 // lib/features/auth/viewmodels/auth_viewmodel.dart
 
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,7 +44,10 @@ class AuthViewModel extends ChangeNotifier {
   bool isPassHidden = true; // Signup ke liye
   bool isLoginPassHidden = true;
   bool isLoading = false;
-
+  Uint8List? existingFaceImageBytes;
+  List<Uint8List> existingStoreImageBytes = [];
+  bool isEditingExisting = false;
+  String? editingUid;
   XFile? faceImageFile;
   List<XFile> storeImageFiles = [];
 
@@ -145,6 +150,8 @@ class AuthViewModel extends ChangeNotifier {
             backgroundColor: Colors.green,
             colorText: Colors.white,
           );
+        } else if (status == 'hold') {
+          Get.offAll(() => const PendingApprovalScreen());
         } else if (status == 'rejected') {
           _showError("This account was rejected. Please contact support.");
         }
@@ -171,6 +178,71 @@ class AuthViewModel extends ChangeNotifier {
     });
   }
 
+  // ✅ NAYA: category ka naam + image url (for image-aware pickers)
+  List<Map<String, dynamic>> get categoryMaps {
+    final seen = <String>{};
+    final result = <Map<String, dynamic>>[];
+    for (var c in dbCategories) {
+      final name = c['name'].toString();
+      if (seen.add(name)) {
+        result.add({'name': name, 'imageUrl': c['imageUrl'] ?? ''});
+      }
+    }
+    return result;
+  }
+
+  // ✅ NAYA: purane (string) aur naye (map) dono format ko safely parse karta hai
+  List<Map<String, dynamic>> _parseSubCategories(dynamic raw) {
+    final list = raw as List<dynamic>? ?? [];
+    return list.map<Map<String, dynamic>>((e) {
+      if (e is String) {
+        return {'name': e, 'imageUrl': ''};
+      }
+      return Map<String, dynamic>.from(e as Map);
+    }).toList();
+  }
+
+  // ✅ NAYA: currently selected categories ke saare sub-categories (name + image)
+  List<Map<String, dynamic>> get availableSubCategoryMaps {
+    final result = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (var catName in selectedCategories) {
+      final cat = dbCategories.firstWhere(
+        (c) => c['name'] == catName,
+        orElse: () => {},
+      );
+      if (cat.isEmpty || cat['subCategories'] == null) continue;
+      for (var s in _parseSubCategories(cat['subCategories'])) {
+        final name = s['name'].toString();
+        if (seen.add(name)) result.add(s);
+      }
+    }
+    return result;
+  }
+
+  // ✅ NAYA: category/sub-category image ko Cloudinary par upload karta hai
+  Future<String?> _uploadCategoryImage(Uint8List bytes, String folder) async {
+    try {
+      final cloudinary = CloudinaryPublic(
+        'dzluvpc34',
+        'marvellous',
+        cache: false,
+      );
+      final byteData = ByteData.view(bytes.buffer);
+      final response = await cloudinary.uploadFile(
+        CloudinaryFile.fromByteData(
+          byteData,
+          identifier: '${folder}_${DateTime.now().millisecondsSinceEpoch}',
+          folder: folder,
+        ),
+      );
+      return response.secureUrl;
+    } catch (e) {
+      debugPrint("Category image upload error: $e");
+      return null;
+    }
+  }
+
   void addSelectedCategory(String name) {
     if (!selectedCategories.contains(name)) {
       selectedCategories.add(name);
@@ -178,16 +250,24 @@ class AuthViewModel extends ChangeNotifier {
     }
   }
 
-  void addNewCategoryLocally(String name) {
+  Future<void> addNewCategoryLocally(
+    String name, {
+    Uint8List? imageBytes,
+  }) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
 
     if (!selectedCategories.contains(trimmed)) {
+      String imageUrl = '';
+      if (imageBytes != null) {
+        imageUrl = await _uploadCategoryImage(imageBytes, 'Categories') ?? '';
+      }
+
       selectedCategories.add(trimmed);
 
       bool alreadyInDb = dbCategories.any((c) => c['name'] == trimmed);
       if (!alreadyInDb) {
-        _pendingNewCategories.add({'name': trimmed});
+        _pendingNewCategories.add({'name': trimmed, 'imageUrl': imageUrl});
       }
 
       notifyListeners();
@@ -209,16 +289,27 @@ class AuthViewModel extends ChangeNotifier {
     }
   }
 
-  void addNewSubCategoryLocally(String categoryName, String subName) {
+  Future<void> addNewSubCategoryLocally(
+    String categoryName,
+    String subName, {
+    Uint8List? imageBytes,
+  }) async {
     final trimmedSub = subName.trim();
     if (trimmedSub.isEmpty) return;
 
     if (!selectedSubCategories.contains(trimmedSub)) {
+      String imageUrl = '';
+      if (imageBytes != null) {
+        imageUrl =
+            await _uploadCategoryImage(imageBytes, 'SubCategories') ?? '';
+      }
+
       selectedSubCategories.add(trimmedSub);
 
       _pendingNewSubCategories.add({
         'categoryName': categoryName,
         'subName': trimmedSub,
+        'imageUrl': imageUrl,
       });
 
       notifyListeners();
@@ -231,6 +322,85 @@ class AuthViewModel extends ChangeNotifier {
         duration: const Duration(seconds: 2),
       );
     }
+  }
+
+  Future<void> loadVendorDataForEdit() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    setLoading(true);
+    try {
+      DocumentSnapshot doc = await _firestore
+          .collection('vendors')
+          .doc(user.uid)
+          .get();
+      if (!doc.exists) {
+        setLoading(false);
+        return;
+      }
+
+      final data = doc.data() as Map<String, dynamic>;
+
+      storeNameCtrl.text = data['storeName'] ?? '';
+      ownerNameCtrl.text = data['ownerName'] ?? '';
+      contactPersonCtrl.text = data['contactPersonName'] ?? '';
+      emailCtrl.text = data['email'] ?? '';
+      addressCtrl.text = data['address'] ?? '';
+      balanceCtrl.text = (data['beginningBalance'] ?? 0).toString();
+
+      storePhoneCtrl.text = _stripCountryCode(data['storePhone'] ?? '');
+      ownerMobileCtrl.text = _stripCountryCode(data['ownerMobile'] ?? '');
+      contactPersonPhoneCtrl.text = _stripCountryCode(
+        data['contactPersonPhone'] ?? '',
+      );
+
+      selectedCategories = List<String>.from(data['categories'] ?? []);
+      selectedSubCategories = List<String>.from(data['subCategories'] ?? []);
+
+      if ((data['profileImage'] ?? '').toString().isNotEmpty) {
+        try {
+          existingFaceImageBytes = base64Decode(data['profileImage']);
+        } catch (_) {}
+      }
+      existingStoreImageBytes = [];
+      for (var img in List<String>.from(data['storePictures'] ?? [])) {
+        try {
+          existingStoreImageBytes.add(base64Decode(img));
+        } catch (_) {}
+      }
+
+      // ✅ Naye picks clear karo taake purana confuse na ho
+      faceImageFile = null;
+      storeImageFiles = [];
+
+      isEditingExisting = true;
+      editingUid = user.uid;
+      setLoading(false);
+      notifyListeners();
+    } catch (e) {
+      setLoading(false);
+      debugPrint("Load vendor data error: $e");
+    }
+  }
+
+  String _stripCountryCode(String fullPhone) {
+    if (fullPhone.isEmpty) return '';
+    if (fullPhone.startsWith(selectedCountryCode)) {
+      return fullPhone.substring(selectedCountryCode.length);
+    }
+    final match = RegExp(r'^\+\d{1,4}').firstMatch(fullPhone);
+    return match != null ? fullPhone.substring(match.end) : fullPhone;
+  }
+
+  // ✅ NAYA: form reset (naya signup start karte waqt purana edit-state clear karo)
+  void resetEditState() {
+    isEditingExisting = false;
+    editingUid = null;
+    existingFaceImageBytes = null;
+    existingStoreImageBytes = [];
+    faceImageFile = null;
+    storeImageFiles = [];
+    notifyListeners();
   }
 
   void removeSelectedCategory(String name) {
@@ -270,6 +440,7 @@ class AuthViewModel extends ChangeNotifier {
         if (existing.docs.isEmpty) {
           await firestore.collection('categories').add({
             'name': catName,
+            'imageUrl': cat['imageUrl'] ?? '', // ✅ NAYA
             'subCategories': [],
             'createdAt': FieldValue.serverTimestamp(),
           });
@@ -292,7 +463,12 @@ class AuthViewModel extends ChangeNotifier {
               .collection('categories')
               .doc(catQuery.docs.first.id)
               .update({
-                'subCategories': FieldValue.arrayUnion([subName]),
+                'subCategories': FieldValue.arrayUnion([
+                  {
+                    'name': subName,
+                    'imageUrl': sub['imageUrl'] ?? '', // ✅ CHANGED: ab map hai
+                  },
+                ]),
               });
         }
       }
@@ -399,24 +575,24 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   // ════════════════════════════════════════════════════════════════════════════
-  // SIGNUP LOGIC (WITH SMART RE-APPLY OVERWRITE)
+  // SIGNUP LOGIC (WITH SMART RE-APPLY OVERWRITE + HOLD EDIT)
   // ════════════════════════════════════════════════════════════════════════════
   Future<void> signUp(BuildContext context) async {
     if (storeNameCtrl.text.isEmpty ||
         emailCtrl.text.isEmpty ||
-        passCtrl.text.isEmpty) {
+        (!isEditingExisting && passCtrl.text.isEmpty)) {
       _showError("Please fill all required fields!");
       return;
     }
-    if (passCtrl.text != confirmPassCtrl.text) {
+    if (!isEditingExisting && passCtrl.text != confirmPassCtrl.text) {
       _showError("Passwords do not match!");
       return;
     }
-    if (faceImageFile == null) {
+    if (faceImageFile == null && existingFaceImageBytes == null) {
       _showError("Profile photo is required!");
       return;
     }
-    if (storeImageFiles.isEmpty) {
+    if (storeImageFiles.isEmpty && existingStoreImageBytes.isEmpty) {
       _showError("Please add at least 1 store picture!");
       return;
     }
@@ -426,6 +602,14 @@ class AuthViewModel extends ChangeNotifier {
     }
 
     setLoading(true);
+
+    // ✅ HOLD flow: naya account nahi banega, seedha existing doc update hoga
+    if (isEditingExisting && editingUid != null) {
+      await _processAndSaveVendorData(editingUid!, context);
+      isEditingExisting = false;
+      editingUid = null;
+      return;
+    }
 
     try {
       UserCredential userCredential = await _auth
@@ -503,21 +687,19 @@ class AuthViewModel extends ChangeNotifier {
   ) async {
     try {
       String? faceBase64;
-      try {
-        final bytes = await faceImageFile!.readAsBytes();
-        faceBase64 = base64Encode(bytes);
-      } catch (e) {
-        debugPrint('Face image encode error: $e');
+      if (faceImageFile != null) {
+        faceBase64 = base64Encode(await faceImageFile!.readAsBytes());
+      } else if (existingFaceImageBytes != null) {
+        faceBase64 = base64Encode(existingFaceImageBytes!);
       }
 
       List<String> storeBase64List = [];
-      for (var xfile in storeImageFiles) {
-        try {
-          final bytes = await xfile.readAsBytes();
-          storeBase64List.add(base64Encode(bytes));
-        } catch (e) {
-          debugPrint('Store image encode error: $e');
+      if (storeImageFiles.isNotEmpty) {
+        for (var xfile in storeImageFiles) {
+          storeBase64List.add(base64Encode(await xfile.readAsBytes()));
         }
+      } else {
+        storeBase64List = existingStoreImageBytes.map(base64Encode).toList();
       }
 
       String storePhone = "$selectedCountryCode${storePhoneCtrl.text.trim()}";
@@ -548,9 +730,20 @@ class AuthViewModel extends ChangeNotifier {
       vendorMap['pendingNewCategories'] = _pendingNewCategories;
       vendorMap['pendingNewSubCategories'] = _pendingNewSubCategories;
 
-      await _firestore.collection('vendors').doc(uid).set(vendorMap);
+      await _firestore
+          .collection('vendors')
+          .doc(uid)
+          .set(
+            vendorMap,
+            SetOptions(merge: true), // ✅ hold-edit ke waqt purana data na ude
+          );
 
       setLoading(false);
+
+      // ✅ edit-state clear karo save ke baad
+      existingFaceImageBytes = null;
+      existingStoreImageBytes = [];
+
       if (context.mounted) {
         Get.snackbar(
           "Success 🎉",
@@ -567,7 +760,7 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   // ════════════════════════════════════════════════════════════════════════════
-  // LOGIN LOGIC (UPDATED FOR REJECTED VENDORS)
+  // LOGIN LOGIC (PENDING / APPROVED / HOLD / REJECTED)
   // ════════════════════════════════════════════════════════════════════════════
   Future<void> login(BuildContext context) async {
     if (loginEmailCtrl.text.isEmpty || loginPassCtrl.text.isEmpty) {
@@ -607,6 +800,130 @@ class AuthViewModel extends ChangeNotifier {
             "Login Successful!",
             backgroundColor: Colors.green,
             colorText: Colors.white,
+          );
+        } else if (status == 'hold') {
+          // ✅ NAYA: Hold status — popup dikhao, sign out MAT karo
+          String reason = '';
+          try {
+            reason = vendorDoc.get('holdReason') ?? '';
+          } catch (_) {}
+          if (reason.isEmpty) reason = 'No reason provided. Contact admin.';
+
+          setLoading(false); // ✅ critical — warna infinite loading atki rahegi
+
+          Get.dialog(
+            barrierDismissible: false,
+            AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Row(
+                children: [
+                  const Icon(
+                    Icons.pause_circle_outline,
+                    color: Colors.amber,
+                    size: 26,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    "Application On Hold",
+                    style: GoogleFonts.orbitron(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Your vendor account has been put on hold by admin.",
+                    style: GoogleFonts.comicNeue(
+                      fontSize: 14,
+                      color: Colors.black54,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.amber.shade200),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.amber.shade800,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "Reason: $reason",
+                            style: GoogleFonts.comicNeue(
+                              fontSize: 14,
+                              color: Colors.amber.shade900,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "You can edit your info and re-apply for approval.",
+                    style: GoogleFonts.comicNeue(
+                      fontSize: 13,
+                      color: Colors.black45,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    Get.back();
+                    await _auth.signOut();
+                  },
+                  child: Text(
+                    "Back to Login",
+                    style: GoogleFonts.comicNeue(
+                      color: Colors.black54,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber.shade800,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () async {
+                    Get.back();
+                    await loadVendorDataForEdit(); // ✅ sign out nahi, data load
+                    Get.off(() => const SignupScreen());
+                  },
+                  child: Text(
+                    "Edit Info & Re-Apply",
+                    style: GoogleFonts.comicNeue(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           );
         } else if (status == 'rejected') {
           // ✅ Reason nikaalo pehle
@@ -725,6 +1042,7 @@ class AuthViewModel extends ChangeNotifier {
                   ),
                   onPressed: () {
                     Get.back();
+                    resetEditState(); // ✅ purana edit-state clear
                     // ✅ Email pre-fill kar do signup mein
                     emailCtrl.text = loginEmailCtrl.text;
                     Get.off(() => const SignupScreen());
@@ -740,6 +1058,10 @@ class AuthViewModel extends ChangeNotifier {
               ],
             ),
           );
+        } else {
+          // ✅ Fallback: koi anjaan status ho to bhi loading atki na rahe
+          setLoading(false);
+          _showError("Unknown account status: $status. Please contact admin.");
         }
       } else {
         setLoading(false);

@@ -54,6 +54,7 @@ dependencies:
   image_cropper: ^12.2.0
   flutter_launcher_icons: ^0.14.4
   shared_preferences: ^2.5.5
+  cloudinary_public: ^0.23.1
 
 dev_dependencies:
   flutter_test:
@@ -116,3 +117,7 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/logo1.png"
+  web:
+    generate: true
+    image_path: "assets/images/logo1.png"
+    background_color: "#FFFFFF"  # apni marzi ka color

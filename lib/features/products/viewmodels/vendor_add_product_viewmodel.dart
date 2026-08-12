@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:typed_data'; // Uint8List aur ByteData ke liye
+import 'package:cloudinary_public/cloudinary_public.dart'; // Cloudinary ke liye
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -134,6 +136,34 @@ class VendorAddProductViewModel extends ChangeNotifier {
   List<String> get categoryNames =>
       dbCategories.map((c) => c['name'].toString()).toSet().toList();
 
+  // ✅ NAYA: category ka naam + image url (for image-aware pickers)
+  List<Map<String, dynamic>> get categoryMaps {
+    final seen = <String>{};
+    final result = <Map<String, dynamic>>[];
+    for (var c in dbCategories) {
+      final name = c['name'].toString();
+      if (seen.add(name)) {
+        result.add({'name': name, 'imageUrl': c['imageUrl'] ?? ''});
+      }
+    }
+    return result;
+  }
+
+  // ✅ NAYA: purane (string) aur naye (map) dono format ko safely parse karta hai
+  List<Map<String, dynamic>> _parseSubCategories(dynamic raw) {
+    final list = raw as List<dynamic>? ?? [];
+    return list.map<Map<String, dynamic>>((e) {
+      if (e is String) {
+        return {'name': e, 'imageUrl': ''};
+      }
+      return Map<String, dynamic>.from(e as Map);
+    }).toList();
+  }
+
+  // ✅ FIXED: pehle 'List<String>.from(cat['subCategories'])' seedha cast karta tha,
+  // lekin subCategories ab Map ({'name':.., 'imageUrl':..}) hoti hain, String nahi —
+  // isi wajah se "LinkedMap is not a subtype of String" crash aa raha tha.
+  // Ab _parseSubCategories() se safely names extract kiye ja rahe hain.
   List<String> get availableSubCategories {
     if (selectedCategory == null) return [];
     var cat = dbCategories.firstWhere(
@@ -141,10 +171,53 @@ class VendorAddProductViewModel extends ChangeNotifier {
       orElse: () => {},
     );
     if (cat.isEmpty || cat['subCategories'] == null) return [];
-    return List<String>.from(cat['subCategories']).toSet().toList();
+    return _parseSubCategories(
+      cat['subCategories'],
+    ).map((s) => s['name'].toString()).toSet().toList();
   }
 
-  Future<void> addNewCategory(String catName) async {
+  // ✅ NAYA: sub-category naam + image url (for image-aware pickers)
+  List<Map<String, dynamic>> get availableSubCategoryMaps {
+    if (selectedCategory == null) return [];
+    var cat = dbCategories.firstWhere(
+      (c) => c['name'] == selectedCategory,
+      orElse: () => {},
+    );
+    if (cat.isEmpty || cat['subCategories'] == null) return [];
+    final parsed = _parseSubCategories(cat['subCategories']);
+    final seen = <String>{};
+    final result = <Map<String, dynamic>>[];
+    for (var s in parsed) {
+      final name = s['name'].toString();
+      if (seen.add(name)) result.add(s);
+    }
+    return result;
+  }
+
+  // ✅ NAYA: category/sub-category image ko Cloudinary par upload karta hai
+  Future<String?> _uploadCategoryImage(Uint8List bytes, String folder) async {
+    try {
+      final cloudinary = CloudinaryPublic(
+        'dzluvpc34',
+        'marvellous',
+        cache: false,
+      );
+      final byteData = ByteData.view(bytes.buffer);
+      final response = await cloudinary.uploadFile(
+        CloudinaryFile.fromByteData(
+          byteData,
+          identifier: '${folder}_${DateTime.now().millisecondsSinceEpoch}',
+          folder: folder,
+        ),
+      );
+      return response.secureUrl;
+    } catch (e) {
+      debugPrint("Category image upload error: $e");
+      return null;
+    }
+  }
+
+  Future<void> addNewCategory(String catName, {Uint8List? imageBytes}) async {
     String trimmed = catName.trim();
     if (dbCategories.any((c) => c['name'] == trimmed)) {
       selectedCategory = trimmed;
@@ -152,28 +225,50 @@ class VendorAddProductViewModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    dbCategories.add({'name': trimmed, 'subCategories': []});
+
+    String imageUrl = '';
+    if (imageBytes != null) {
+      imageUrl = await _uploadCategoryImage(imageBytes, 'Categories') ?? '';
+    }
+
+    dbCategories.add({
+      'name': trimmed,
+      'imageUrl': imageUrl,
+      'subCategories': [],
+    });
     selectedCategory = trimmed;
     selectedSubCategory = null;
     notifyListeners();
     try {
       await _firestore.collection('categories').add({
         'name': trimmed,
+        'imageUrl': imageUrl,
         'subCategories': [],
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {}
   }
 
-  Future<void> addNewSubCategory(String catName, String subName) async {
+  Future<void> addNewSubCategory(
+    String catName,
+    String subName, {
+    Uint8List? imageBytes,
+  }) async {
     String trimmedSub = subName.trim();
+
+    String imageUrl = '';
+    if (imageBytes != null) {
+      imageUrl = await _uploadCategoryImage(imageBytes, 'SubCategories') ?? '';
+    }
+    final newSub = {'name': trimmedSub, 'imageUrl': imageUrl};
+
     var catIndex = dbCategories.indexWhere((c) => c['name'] == catName);
     if (catIndex != -1) {
-      List<dynamic> subs = List.from(
-        dbCategories[catIndex]['subCategories'] ?? [],
+      List<Map<String, dynamic>> subs = _parseSubCategories(
+        dbCategories[catIndex]['subCategories'],
       );
-      if (!subs.contains(trimmedSub)) {
-        subs.add(trimmedSub);
+      if (!subs.any((s) => s['name'] == trimmedSub)) {
+        subs.add(newSub);
         dbCategories[catIndex]['subCategories'] = subs;
       }
     }
@@ -190,7 +285,7 @@ class VendorAddProductViewModel extends ChangeNotifier {
             .collection('categories')
             .doc(catQuery.docs.first.id)
             .update({
-              'subCategories': FieldValue.arrayUnion([trimmedSub]),
+              'subCategories': FieldValue.arrayUnion([newSub]),
             });
       }
     } catch (e) {}
@@ -361,6 +456,23 @@ class VendorAddProductViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // ✅ 6. CLOUDINARY UPLOAD LOGIC
+      List<String> uploadedImageUrls = await uploadImagesToCloudinary(
+        combinedImages,
+      );
+
+      if (uploadedImageUrls.isEmpty) {
+        _showSnackBar(
+          context,
+          "Upload Failed",
+          "Images upload nahi ho sakin. Please check your connection and try again.",
+          Colors.redAccent,
+        );
+        isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
       ProductModel requestProduct = ProductModel(
         name: nameCtrl.text.trim(),
         modelNumber: modelCtrl.text.trim(),
@@ -368,14 +480,15 @@ class VendorAddProductViewModel extends ChangeNotifier {
         tiktokVideoUrl: tiktokUrlCtrl.text.trim(), // Optional field
         category: selectedCategory!,
         subCategory: selectedSubCategory ?? "General",
-        brand: brandCtrl.text.trim(), // Generic ki jagah ab mandatory hai
+        brand: brandCtrl.text.trim(),
         purchasePrice: double.tryParse(purchaseCtrl.text) ?? 0,
         salePrice: double.tryParse(saleCtrl.text) ?? 0,
         originalPrice: double.tryParse(originalCtrl.text) ?? 0,
         stockQuantity: 1,
         vendorId: currentVendorId,
         vendorName: currentVendorName,
-        images: combinedImages,
+        images:
+            uploadedImageUrls, // ✅ Yahan base64 ki jagah Cloudinary URLs assign kiye hain
         dateAdded: selectedDate,
         deliveryLocation: "Pending Admin Review",
         warranty: _getCombinedWarranty(),
@@ -427,6 +540,44 @@ class VendorAddProductViewModel extends ChangeNotifier {
       isLoading = false;
       notifyListeners();
     }
+  }
+
+  // ✅ NAYA: Cloudinary Upload Method for Vendor
+  Future<List<String>> uploadImagesToCloudinary(List<String> imagesData) async {
+    final cloudinary = CloudinaryPublic(
+      'dzluvpc34',
+      'marvellous',
+      cache: false,
+    );
+
+    List<Future<String>> uploadTasks = imagesData.map((data) async {
+      // Agar Edit Mode mein pehle se URL (http) hai, toh dobara upload na karein
+      if (data.startsWith('http')) return data;
+
+      try {
+        // Base64 string ko clean karein (agar prefix maujood ho)
+        String cleanBase64 = data.contains(',') ? data.split(',').last : data;
+        Uint8List bytes = base64Decode(cleanBase64);
+        final byteData = ByteData.view(bytes.buffer);
+
+        CloudinaryResponse response = await cloudinary.uploadFile(
+          CloudinaryFile.fromByteData(
+            byteData,
+            identifier:
+                'vendor_prod_${DateTime.now().millisecondsSinceEpoch}_${cleanBase64.substring(0, 5)}.jpg',
+            resourceType: CloudinaryResourceType.Image,
+          ),
+        );
+        return response.secureUrl;
+      } catch (e) {
+        debugPrint("Cloudinary Error: $e");
+        return ""; // Error ki surat mein empty string return hogi
+      }
+    }).toList();
+
+    List<String> results = await Future.wait(uploadTasks);
+    // Sirf valid URLs wapas bhejain jo successfully upload hue hon
+    return results.where((url) => url.isNotEmpty).toList();
   }
 
   void _clearForm() {

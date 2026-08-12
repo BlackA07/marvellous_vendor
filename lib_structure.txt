@@ -1,0 +1,111 @@
+Folder PATH listing for volume Flutter
+Volume serial number is 000000C8 F669:43D1
+E:\MARVELLOUS\MARVELLOUS_VENDOR\LIB
+³   firebase_options.dart
+³   main.dart
+³   
+ÃÄÄÄcore
+³   ÃÄÄÄtheme
+³   ³       app_theme.dart
+³   ³       pallete.dart
+³   ³       
+³   ÃÄÄÄutils
+³   ÀÄÄÄwidgets
+³           app_background.dart
+³           custom_drawer.dart
+³           metallic_button.dart
+³           metallic_textfield.dart
+³           trapezoid_button.dart
+³           
+ÀÄÄÄfeatures
+    ÃÄÄÄauth
+    ³   ÃÄÄÄmodels
+    ³   ³       vendor_model.dart
+    ³   ³       
+    ³   ÃÄÄÄviewmodels
+    ³   ³       auth_viewmodel.dart
+    ³   ³       
+    ³   ÀÄÄÄviews
+    ³           login_screen.dart
+    ³           pending_approval_screen.dart
+    ³           signup_screen.dart
+    ³           
+    ÃÄÄÄdashboard
+    ³   ÃÄÄÄtabs
+    ³   ³       home_tab.dart
+    ³   ³       placeholder_tabs.dart
+    ³   ³       
+    ³   ÃÄÄÄviewmodels
+    ³   ³       dashboard_viewmodel.dart
+    ³   ³       
+    ³   ÀÄÄÄviews
+    ³           dashboard_screen.dart
+    ³           
+    ÃÄÄÄfinance
+    ³   ÃÄÄÄcontrollers
+    ³   ³       vendor_finance_controller.dart
+    ³   ³       
+    ³   ÃÄÄÄmodels
+    ³   ³       vendor_finance_model.dart
+    ³   ³       
+    ³   ÃÄÄÄpresentation
+    ³   ³   ÀÄÄÄscreens
+    ³   ³           vendor_finance_screen.dart
+    ³   ³           
+    ³   ÀÄÄÄrepository
+    ³           vendor_finance_repository.dart
+    ³           
+    ÃÄÄÄnotifications
+    ³   ÃÄÄÄcontrollers
+    ³   ³       vendor_notifications_controller.dart
+    ³   ³       
+    ³   ÀÄÄÄscreens
+    ³           vendor_notifications_screen.dart
+    ³           
+    ÃÄÄÄorders
+    ³   ÃÄÄÄcontrollers
+    ³   ³       vendor_orders_controller.dart
+    ³   ³       vendor_order_request_controller.dart
+    ³   ³       
+    ³   ÃÄÄÄmodels
+    ³   ³       order_request_model.dart
+    ³   ³       vendor_order_model.dart
+    ³   ³       
+    ³   ÃÄÄÄpresentation
+    ³   ³   ÀÄÄÄscreens
+    ³   ³           vendor_bill_detail_screen.dart
+    ³   ³           vendor_orders_screen.dart
+    ³   ³           vendor_order_requests_screen.dart
+    ³   ³           
+    ³   ÀÄÄÄrepository
+    ³           vendor_orders_repository.dart
+    ³           
+    ÃÄÄÄproducts
+    ³   ÃÄÄÄmodels
+    ³   ³       product_model.dart
+    ³   ³       
+    ³   ÃÄÄÄrepository
+    ³   ³       vendor_products_repository.dart
+    ³   ³       
+    ³   ÃÄÄÄviewmodels
+    ³   ³       vendor_add_product_viewmodel.dart
+    ³   ³       vendor_products_controller.dart
+    ³   ³       
+    ³   ÀÄÄÄviews
+    ³       ³   add_product_screen.dart
+    ³       ³   vendor_my_products_screen.dart
+    ³       ³   
+    ³       ÀÄÄÄwidgets
+    ³               vendor_info_section.dart
+    ³               vendor_media_section.dart
+    ³               
+    ÃÄÄÄreports
+    ³       vendor_report_controller.dart
+    ³       vendor_report_model.dart
+    ³       vendor_report_repository.dart
+    ³       vendor_report_screen.dart
+    ³       
+    ÀÄÄÄsplash
+        ÀÄÄÄviews
+                splash_screen.dart
+                

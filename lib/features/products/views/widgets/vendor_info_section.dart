@@ -1,9 +1,13 @@
 // lib/features/products/views/widgets/vendor_info_section.dart
 
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import '../../viewmodels/vendor_add_product_viewmodel.dart';
 
 class VendorInfoSection extends ConsumerWidget {
@@ -449,7 +453,7 @@ class VendorInfoSection extends ConsumerWidget {
                     _openSearchableBottomSheet(
                       context,
                       "Select Category",
-                      viewModel.categoryNames,
+                      viewModel.categoryMaps,
                       (selected) {
                         viewModelNotifier.selectedCategory = selected;
                         viewModelNotifier.selectedSubCategory =
@@ -529,7 +533,7 @@ class VendorInfoSection extends ConsumerWidget {
                     _openSearchableBottomSheet(
                       context,
                       "Select Sub Category",
-                      viewModel.availableSubCategories,
+                      viewModel.availableSubCategoryMaps,
                       (selected) {
                         viewModelNotifier.selectedSubCategory = selected;
                         viewModelNotifier.notifyListeners();
@@ -555,11 +559,11 @@ class VendorInfoSection extends ConsumerWidget {
     );
   }
 
-  // ✅ NAYA METHOD: Search, Sort aur Keyboard handle karne ke liye (Ye bhi class k andar add karein)
+  // ✅ UPDATED: Search, Sort, Circular Image aur Keyboard handle karne ke liye
   void _openSearchableBottomSheet(
     BuildContext context,
     String title,
-    List<String> items,
+    List<Map<String, dynamic>> items,
     Function(String) onSelected,
   ) {
     TextEditingController searchCtrl = TextEditingController();
@@ -572,15 +576,18 @@ class VendorInfoSection extends ConsumerWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             // ✅ A to Z Sort & Search Filter
-            List<String> filtered =
+            List<Map<String, dynamic>> filtered =
                 items
                     .where(
-                      (e) => e.toLowerCase().contains(
+                      (e) => e['name'].toString().toLowerCase().contains(
                         searchCtrl.text.toLowerCase(),
                       ),
                     )
                     .toList()
-                  ..sort();
+                  ..sort(
+                    (a, b) =>
+                        a['name'].toString().compareTo(b['name'].toString()),
+                  );
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.7, // Screen ka 70%
@@ -641,9 +648,26 @@ class VendorInfoSection extends ConsumerWidget {
                               physics: const BouncingScrollPhysics(),
                               itemCount: filtered.length,
                               itemBuilder: (context, index) {
+                                final item = filtered[index];
+                                final imgUrl =
+                                    item['imageUrl']?.toString() ?? '';
                                 return ListTile(
+                                  leading: CircleAvatar(
+                                    radius: 18,
+                                    backgroundColor: Colors.white12,
+                                    backgroundImage: imgUrl.isNotEmpty
+                                        ? NetworkImage(imgUrl)
+                                        : null,
+                                    child: imgUrl.isEmpty
+                                        ? const Icon(
+                                            Icons.image,
+                                            size: 16,
+                                            color: Colors.white38,
+                                          )
+                                        : null,
+                                  ),
                                   title: Text(
-                                    filtered[index],
+                                    item['name'].toString(),
                                     style: const TextStyle(color: Colors.white),
                                   ),
                                   trailing: const Icon(
@@ -652,7 +676,7 @@ class VendorInfoSection extends ConsumerWidget {
                                     size: 14,
                                   ),
                                   onTap: () {
-                                    onSelected(filtered[index]);
+                                    onSelected(item['name'].toString());
                                     Navigator.pop(ctx);
                                   },
                                 );
@@ -669,56 +693,141 @@ class VendorInfoSection extends ConsumerWidget {
     );
   }
 
-  // --- Add Category / SubCategory Dialog ---
+  // --- Add Category / SubCategory Dialog (✅ ab image pick + upload bhi karta hai) ---
   void _showAddDialog(BuildContext context, {required bool isSubCategory}) {
     TextEditingController newCtrl = TextEditingController();
-    Get.dialog(
-      AlertDialog(
-        backgroundColor: Colors.white,
-        title: Text(
-          isSubCategory ? "Add Sub-Category" : "Add Category",
-          style: GoogleFonts.orbitron(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        content: TextField(
-          controller: newCtrl,
-          style: const TextStyle(color: Colors.black),
-          decoration: InputDecoration(
-            hintText: "Enter Name",
-            filled: true,
-            fillColor: Colors.grey.shade100,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: accentColor),
-            onPressed: () {
-              if (newCtrl.text.trim().isNotEmpty) {
-                String newName = newCtrl.text.trim();
-                Get.back();
+    Uint8List? pickedBytes;
+    bool isSaving = false;
 
-                Future.delayed(const Duration(milliseconds: 150), () {
-                  if (isSubCategory && viewModel.selectedCategory != null) {
-                    viewModelNotifier.addNewSubCategory(
-                      viewModel.selectedCategory!,
-                      newName,
-                    );
-                  } else {
-                    viewModelNotifier.addNewCategory(newName);
-                  }
-                });
-              }
-            },
-            child: const Text("Add", style: TextStyle(color: Colors.white)),
+    Future<void> pickImage(void Function(void Function()) setState) async {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: ImageSource.gallery);
+      if (picked == null) return;
+
+      if (kIsWeb) {
+        final bytes = await picked.readAsBytes();
+        setState(() => pickedBytes = bytes);
+        return;
+      }
+
+      final cropped = await ImageCropper().cropImage(
+        sourcePath: picked.path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop Image',
+            toolbarColor: Colors.black,
+            toolbarWidgetColor: Colors.white,
+            cropStyle: CropStyle.circle,
+            lockAspectRatio: true,
+          ),
+          IOSUiSettings(
+            title: 'Crop Image',
+            aspectRatioLockEnabled: true,
+            cropStyle: CropStyle.circle,
           ),
         ],
+      );
+      if (cropped != null) {
+        final bytes = await cropped.readAsBytes();
+        setState(() => pickedBytes = bytes);
+      }
+    }
+
+    Get.dialog(
+      StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            title: Text(
+              isSubCategory ? "Add Sub-Category" : "Add Category",
+              style: GoogleFonts.orbitron(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: isSaving ? null : () => pickImage(setState),
+                  child: CircleAvatar(
+                    radius: 40,
+                    backgroundColor: Colors.grey.shade200,
+                    backgroundImage: pickedBytes != null
+                        ? MemoryImage(pickedBytes!) as ImageProvider
+                        : null,
+                    child: pickedBytes == null
+                        ? const Icon(Icons.add_a_photo, color: Colors.black45)
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  "Tap to add image (optional)",
+                  style: TextStyle(color: Colors.black54, fontSize: 12),
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: newCtrl,
+                  style: const TextStyle(color: Colors.black),
+                  decoration: InputDecoration(
+                    hintText: "Enter Name",
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Get.back(),
+                child: const Text(
+                  "Cancel",
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: accentColor),
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        if (newCtrl.text.trim().isEmpty) return;
+                        setState(() => isSaving = true);
+                        String newName = newCtrl.text.trim();
+
+                        if (isSubCategory &&
+                            viewModel.selectedCategory != null) {
+                          await viewModelNotifier.addNewSubCategory(
+                            viewModel.selectedCategory!,
+                            newName,
+                            imageBytes: pickedBytes,
+                          );
+                        } else {
+                          await viewModelNotifier.addNewCategory(
+                            newName,
+                            imageBytes: pickedBytes,
+                          );
+                        }
+                        Get.back();
+                      },
+                child: isSaving
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text("Add", style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
