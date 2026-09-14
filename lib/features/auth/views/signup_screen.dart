@@ -1,11 +1,13 @@
 // lib/features/auth/views/signup_screen.dart
 
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:country_code_picker/country_code_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:get/get.dart';
@@ -79,16 +81,58 @@ class SignupScreen extends ConsumerWidget {
     );
   }
 
+  // ✅ NAYA HELPER: category/sub-category add dialog ke andar image pick + crop karta hai
+  Future<void> _pickCategoryImage(
+    BuildContext context,
+    void Function(void Function()) setDialogState,
+    void Function(Uint8List) onPicked,
+  ) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+
+    if (kIsWeb) {
+      final bytes = await picked.readAsBytes();
+      setDialogState(() => onPicked(bytes));
+      return;
+    }
+
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: picked.path,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop Image',
+          toolbarColor: const Color(0xFF2A2D3E),
+          toolbarWidgetColor: Colors.white,
+          cropStyle: CropStyle.circle,
+          lockAspectRatio: true,
+        ),
+        IOSUiSettings(
+          title: 'Crop Image',
+          aspectRatioLockEnabled: true,
+          cropStyle: CropStyle.circle,
+        ),
+      ],
+    );
+    if (cropped != null) {
+      final bytes = await cropped.readAsBytes();
+      setDialogState(() => onPicked(bytes));
+    }
+  }
+
   void _showCategoryDialog(BuildContext context, AuthViewModel viewModel) {
     final searchCtrl = TextEditingController();
     final newCtrl = TextEditingController();
+    Uint8List? pickedBytes;
+    bool isSaving = false;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           final List<Map<String, dynamic>> filtered =
-              viewModel.dbCategories
+              viewModel.categoryMaps
                   .where(
                     (c) => c['name'].toString().toLowerCase().contains(
                       searchCtrl.text.toLowerCase(),
@@ -185,11 +229,27 @@ class SignupScreen extends ConsumerWidget {
                         child: ListView.builder(
                           itemCount: filtered.length,
                           itemBuilder: (context, index) {
-                            final name = filtered[index]['name'].toString();
+                            final item = filtered[index];
+                            final name = item['name'].toString();
+                            final imgUrl = item['imageUrl']?.toString() ?? '';
                             final isSelected = viewModel.selectedCategories
                                 .contains(name);
                             return ListTile(
                               dense: true,
+                              leading: CircleAvatar(
+                                radius: 15,
+                                backgroundColor: Colors.white12,
+                                backgroundImage: imgUrl.isNotEmpty
+                                    ? NetworkImage(imgUrl)
+                                    : null,
+                                child: imgUrl.isEmpty
+                                    ? const Icon(
+                                        Icons.image,
+                                        size: 14,
+                                        color: Colors.white38,
+                                      )
+                                    : null,
+                              ),
                               title: Text(
                                 name,
                                 style: TextStyle(
@@ -247,6 +307,38 @@ class SignupScreen extends ConsumerWidget {
                       ),
                     ),
 
+                    // ✅ NAYA: image picker for new category
+                    Center(
+                      child: GestureDetector(
+                        onTap: () => _pickCategoryImage(
+                          context,
+                          setDialogState,
+                          (bytes) => pickedBytes = bytes,
+                        ),
+                        child: CircleAvatar(
+                          radius: 32,
+                          backgroundColor: Colors.white12,
+                          backgroundImage: pickedBytes != null
+                              ? MemoryImage(pickedBytes!) as ImageProvider
+                              : null,
+                          child: pickedBytes == null
+                              ? const Icon(
+                                  Icons.add_a_photo,
+                                  color: Colors.white54,
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Center(
+                      child: Text(
+                        "Tap to add image (optional)",
+                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
                     // New category field
                     TextField(
                       controller: newCtrl,
@@ -268,7 +360,7 @@ class SignupScreen extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton(
-                          onPressed: () => Navigator.pop(ctx),
+                          onPressed: isSaving ? null : () => Navigator.pop(ctx),
                           child: const Text(
                             "Cancel",
                             style: TextStyle(color: Colors.white54),
@@ -279,18 +371,30 @@ class SignupScreen extends ConsumerWidget {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blueAccent,
                           ),
-                          onPressed: () {
-                            if (newCtrl.text.isNotEmpty) {
-                              viewModel.addNewCategoryLocally(
-                                newCtrl.text.trim(),
-                              );
-                            }
-                            Navigator.pop(ctx);
-                          },
-                          child: const Text(
-                            "Add",
-                            style: TextStyle(color: Colors.white),
-                          ),
+                          onPressed: isSaving
+                              ? null
+                              : () async {
+                                  if (newCtrl.text.trim().isEmpty) return;
+                                  setDialogState(() => isSaving = true);
+                                  await viewModel.addNewCategoryLocally(
+                                    newCtrl.text.trim(),
+                                    imageBytes: pickedBytes,
+                                  );
+                                  Navigator.pop(ctx);
+                                },
+                          child: isSaving
+                              ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  "Add",
+                                  style: TextStyle(color: Colors.white),
+                                ),
                         ),
                       ],
                     ),
@@ -317,32 +421,26 @@ class SignupScreen extends ConsumerWidget {
     final searchCtrl = TextEditingController();
     final newCtrl = TextEditingController();
     String? selectedParentCatForNew = viewModel.selectedCategories.first;
+    Uint8List? pickedBytes;
+    bool isSaving = false;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
-          // Collect all subs from selected categories
-          final List<String> allSubs = [];
-          for (var catName in viewModel.selectedCategories) {
-            final cat = viewModel.dbCategories.firstWhere(
-              (c) => c['name'] == catName,
-              orElse: () => {},
-            );
-            if (cat.isNotEmpty && cat['subCategories'] != null) {
-              allSubs.addAll(List<String>.from(cat['subCategories']));
-            }
-          }
-
-          final List<String> filtered =
-              allSubs
-                  .toSet()
+          // Collect all subs (with image) from selected categories
+          final List<Map<String, dynamic>> filtered =
+              viewModel.availableSubCategoryMaps
                   .where(
-                    (s) =>
-                        s.toLowerCase().contains(searchCtrl.text.toLowerCase()),
+                    (s) => s['name'].toString().toLowerCase().contains(
+                      searchCtrl.text.toLowerCase(),
+                    ),
                   )
                   .toList()
-                ..sort();
+                ..sort(
+                  (a, b) =>
+                      a['name'].toString().compareTo(b['name'].toString()),
+                );
 
           return Dialog(
             backgroundColor: const Color(0xFF1E1E1E),
@@ -431,11 +529,27 @@ class SignupScreen extends ConsumerWidget {
                         child: ListView.builder(
                           itemCount: filtered.length,
                           itemBuilder: (context, index) {
-                            final name = filtered[index];
+                            final item = filtered[index];
+                            final name = item['name'].toString();
+                            final imgUrl = item['imageUrl']?.toString() ?? '';
                             final isSelected = viewModel.selectedSubCategories
                                 .contains(name);
                             return ListTile(
                               dense: true,
+                              leading: CircleAvatar(
+                                radius: 15,
+                                backgroundColor: Colors.white12,
+                                backgroundImage: imgUrl.isNotEmpty
+                                    ? NetworkImage(imgUrl)
+                                    : null,
+                                child: imgUrl.isEmpty
+                                    ? const Icon(
+                                        Icons.subdirectory_arrow_right,
+                                        size: 14,
+                                        color: Colors.white38,
+                                      )
+                                    : null,
+                              ),
                               title: Text(
                                 name,
                                 style: TextStyle(
@@ -520,6 +634,38 @@ class SignupScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 10),
 
+                    // ✅ NAYA: image picker for new sub-category
+                    Center(
+                      child: GestureDetector(
+                        onTap: () => _pickCategoryImage(
+                          context,
+                          setDialogState,
+                          (bytes) => pickedBytes = bytes,
+                        ),
+                        child: CircleAvatar(
+                          radius: 32,
+                          backgroundColor: Colors.white12,
+                          backgroundImage: pickedBytes != null
+                              ? MemoryImage(pickedBytes!) as ImageProvider
+                              : null,
+                          child: pickedBytes == null
+                              ? const Icon(
+                                  Icons.add_a_photo,
+                                  color: Colors.white54,
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Center(
+                      child: Text(
+                        "Tap to add image (optional)",
+                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
                     // New sub-category field
                     TextField(
                       controller: newCtrl,
@@ -541,7 +687,7 @@ class SignupScreen extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton(
-                          onPressed: () => Navigator.pop(ctx),
+                          onPressed: isSaving ? null : () => Navigator.pop(ctx),
                           child: const Text(
                             "Cancel",
                             style: TextStyle(color: Colors.white54),
@@ -552,20 +698,34 @@ class SignupScreen extends ConsumerWidget {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
                           ),
-                          onPressed: () {
-                            if (newCtrl.text.isNotEmpty &&
-                                selectedParentCatForNew != null) {
-                              viewModel.addNewSubCategoryLocally(
-                                selectedParentCatForNew!,
-                                newCtrl.text.trim(),
-                              );
-                            }
-                            Navigator.pop(ctx);
-                          },
-                          child: const Text(
-                            "Save",
-                            style: TextStyle(color: Colors.white),
-                          ),
+                          onPressed: isSaving
+                              ? null
+                              : () async {
+                                  if (newCtrl.text.trim().isEmpty ||
+                                      selectedParentCatForNew == null) {
+                                    return;
+                                  }
+                                  setDialogState(() => isSaving = true);
+                                  await viewModel.addNewSubCategoryLocally(
+                                    selectedParentCatForNew!,
+                                    newCtrl.text.trim(),
+                                    imageBytes: pickedBytes,
+                                  );
+                                  Navigator.pop(ctx);
+                                },
+                          child: isSaving
+                              ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  "Save",
+                                  style: TextStyle(color: Colors.white),
+                                ),
                         ),
                       ],
                     ),

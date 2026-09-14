@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "marvellous-e-commerce"
+  },
+  "targets": {
+    "marvellous-e-commerce": {
+      "hosting": {
+        "vendor": [
+          "marvellous-vendor"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

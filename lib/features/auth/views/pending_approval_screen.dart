@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/widgets/app_background.dart';
 import '../../dashboard/views/dashboard_screen.dart';
+import '../viewmodels/auth_viewmodel.dart';
 import 'login_screen.dart';
 import 'signup_screen.dart';
 
-class PendingApprovalScreen extends StatelessWidget {
+class PendingApprovalScreen extends ConsumerWidget {
   const PendingApprovalScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return const LoginScreen();
 
@@ -69,7 +71,9 @@ class PendingApprovalScreen extends StatelessWidget {
                   extraButtonLabel: "Edit Info & Re-Apply",
                   extraButtonColor: Colors.amber.shade800,
                   onExtraButton: () async {
-                    await FirebaseAuth.instance.signOut();
+                    await ref
+                        .read(authViewModelProvider)
+                        .loadVendorDataForEdit(); // ❌ signOut hata do
                     Get.offAll(() => const SignupScreen());
                   },
                   showProgress: false,

@@ -160,8 +160,13 @@ class _VendorAddProductScreenState
                           ),
                         ),
                         onPressed: () {
-                          Navigator.pop(dialogContext);
-                          Get.back();
+                          // 1. Dashboard ki state ko 0 (Home tab) par reset karein
+                          ref.read(dashboardNavProvider.notifier).state = 0;
+
+                          Navigator.of(dialogContext).pop();
+
+                          // 3. Phir AddProductScreen band karke seedha dashboard par wapas jayein
+                          Navigator.of(context).pop();
                         },
                       ),
                     ),

@@ -1,12 +1,8 @@
 // lib/features/splash/views/splash_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/widgets/app_background.dart';
-import '../../auth/views/login_screen.dart';
-import '../../auth/views/pending_approval_screen.dart';
-import '../../dashboard/views/dashboard_screen.dart'; // ✅ Dashboard Import add kiya
+import '../../../main.dart'; // ✅ AuthGate yahan se import
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -19,41 +15,13 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _checkAuthState();
+    _goNext();
   }
 
-  Future<void> _checkAuthState() async {
+  Future<void> _goNext() async {
     await Future.delayed(const Duration(seconds: 3));
-
-    User? currentUser = FirebaseAuth.instance.currentUser;
-
-    if (currentUser == null) {
-      Get.offAll(() => const LoginScreen());
-    } else {
-      try {
-        DocumentSnapshot vendorDoc = await FirebaseFirestore.instance
-            .collection('vendors')
-            .doc(currentUser.uid)
-            .get();
-
-        if (vendorDoc.exists) {
-          String status = vendorDoc.get('status') ?? 'pending';
-
-          if (status == 'approved') {
-            Get.offAll(() => const DashboardScreen());
-          } else {
-            // pending, hold, rejected — sab PendingApprovalScreen pe
-            Get.offAll(() => const PendingApprovalScreen());
-          }
-        } else {
-          await FirebaseAuth.instance.signOut();
-          Get.offAll(() => const LoginScreen());
-        }
-      } catch (e) {
-        await FirebaseAuth.instance.signOut();
-        Get.offAll(() => const LoginScreen());
-      }
-    }
+    if (!mounted) return;
+    Get.offAll(() => const AuthGate()); // ✅ decision AuthGate karega
   }
 
   @override
